@@ -10,11 +10,11 @@ out/
 # Production
 dist-electron/
 
-# Database
-*.db
+# Database (keep dev.db for production build)
 *.db-journal
 *.db-wal
 *.db.backup
+!dev.db
 
 # Environment
 .env

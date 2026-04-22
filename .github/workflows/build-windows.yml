@@ -13,6 +13,8 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          lfs: true
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -25,36 +27,6 @@ jobs:
 
       - name: Generate Prisma client
         run: npx prisma generate
-
-      - name: Create and migrate database
-        run: npx prisma db push --accept-data-loss
-
-      - name: Seed production database
-        shell: bash
-        run: |
-          npx prisma db execute --stdin <<'SQL'
-          INSERT INTO Branch (id, name, slug, isMain, isActive, timezone, taxRate, createdAt, updatedAt)
-          VALUES ('branch_main', 'Main Branch', 'main', 1, 1, 'Asia/Bangkok', 7, datetime('now'), datetime('now'));
-
-          INSERT INTO Settings (id, key, value, createdAt, updatedAt) VALUES ('setting_shopName', 'shopName', 'My Shop', datetime('now'), datetime('now'));
-          INSERT INTO Settings (id, key, value, createdAt, updatedAt) VALUES ('setting_taxRate', 'taxRate', '7', datetime('now'), datetime('now'));
-          INSERT INTO Settings (id, key, value, createdAt, updatedAt) VALUES ('setting_defaultVatMode', 'defaultVatMode', 'exclusive', datetime('now'), datetime('now'));
-          INSERT INTO Settings (id, key, value, createdAt, updatedAt) VALUES ('setting_currency', 'currency', 'THB', datetime('now'), datetime('now'));
-          INSERT INTO Settings (id, key, value, createdAt, updatedAt) VALUES ('setting_receiptFooter', 'receiptFooter', 'Thank you for your purchase!', datetime('now'), datetime('now'));
-          SQL
-
-          # Hash PINs with bcrypt and insert staff
-          npx tsx -e "
-            import bcrypt from 'bcryptjs';
-            import { PrismaClient } from '@prisma/client';
-            const prisma = new PrismaClient();
-            const hash = await bcrypt.hash('1234', 10);
-            const mhash = await bcrypt.hash('5678', 10);
-            await prisma.staff.create({ data: { id: 'staff_admin', name: 'Admin', email: 'admin@bitepos.local', pin: hash, role: 'admin', isActive: true, branchId: 'branch_main' } });
-            await prisma.staff.create({ data: { id: 'staff_manager', name: 'Manager', email: 'manager@bitepos.local', pin: mhash, role: 'manager', isActive: true, branchId: 'branch_main' } });
-            await prisma.\$disconnect();
-            console.log('Staff seeded');
-          "
 
       - name: Build Next.js
         run: npx next build
