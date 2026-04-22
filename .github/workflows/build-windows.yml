@@ -13,8 +13,6 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-        with:
-          lfs: true
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -27,10 +25,13 @@ jobs:
 
       - name: Generate Prisma client
         run: npx prisma generate
+        env:
+          DATABASE_URL: "file:./dev.db"
 
       - name: Build Next.js
         run: npx next build
         env:
+          DATABASE_URL: "file:./dev.db"
           JWT_SECRET: bitepos-prod-build-placeholder
 
       - name: Build Electron app
