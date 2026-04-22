@@ -31,32 +31,12 @@ jobs:
         run: |
           rm -f dev.db dev.db-journal dev.db-wal
           npx prisma db push --accept-data-loss
-          node -e "
-            const { PrismaLibSql } = require('@prisma/adapter-libsql');
-            const { PrismaClient } = require('@prisma/client');
-            const path = require('path');
-            const bcrypt = require('bcryptjs');
-            const adapter = new PrismaLibSql({ url: 'file:' + path.join(process.cwd(), 'dev.db') });
-            const prisma = new PrismaClient({ adapter });
-            async function main() {
-              const hash = await bcrypt.hash('1234', 10);
-              const mhash = await bcrypt.hash('5678', 10);
-              const branch = await prisma.branch.create({ data: { name: 'Main Branch', slug: 'main', isMain: true, isActive: true, timezone: 'Asia/Bangkok', taxRate: 7 } });
-              await prisma.staff.create({ data: { name: 'Admin', email: 'admin@bitepos.local', pin: hash, role: 'admin', isActive: true, branchId: branch.id } });
-              await prisma.staff.create({ data: { name: 'Manager', email: 'manager@bitepos.local', pin: mhash, role: 'manager', isActive: true, branchId: branch.id } });
-              const settings = [
-                { key: 'shopName', value: 'My Shop' },
-                { key: 'taxRate', value: '7' },
-                { key: 'defaultVatMode', value: 'exclusive' },
-                { key: 'currency', value: 'THB' },
-                { key: 'receiptFooter', value: 'Thank you for your purchase!' },
-              ];
-              for (const s of settings) { await prisma.settings.create({ data: s }); }
-              await prisma.\$disconnect();
-              console.log('Production DB seeded');
-            }
-            main().catch(e => { console.error(e); process.exit(1); });
-          "
+
+      - name: Seed production database
+        shell: bash
+        run: npx tsx prisma/seed-ci.ts
+        env:
+          DATABASE_URL: "file:./dev.db"
 
       - name: Build Next.js
         run: npx next build
