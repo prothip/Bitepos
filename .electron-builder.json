@@ -1,0 +1,73 @@
+{
+  "appId": "com.bitepos.pos",
+  "productName": "BitePOS POS",
+  "copyright": "Copyright 2024 BitePOS",
+  "main": "electron/main.js",
+  "directories": {
+    "output": "dist",
+    "buildResources": "public"
+  },
+  "files": [
+    "electron/**/*",
+    ".next/standalone/**/*",
+    ".next/static/**/*",
+    "public/**/*",
+    "node_modules/**/*",
+    "!node_modules/electron/**",
+    "!node_modules/electron-builder/**"
+  ],
+  "extraResources": [
+    {
+      "from": ".next/standalone",
+      "to": "app",
+      "filter": ["**/*"]
+    },
+    {
+      "from": ".next/static",
+      "to": "app/.next/static",
+      "filter": ["**/*"]
+    }
+  ],
+  "publish": {
+    "provider": "generic",
+    "url": "https://updates.bitepos.com"
+  },
+  "win": {
+    "target": [
+      {
+        "target": "nsis",
+        "arch": ["x64"]
+      }
+    ],
+    "icon": "public/icon.ico"
+  },
+  "mac": {
+    "target": [
+      {
+        "target": "dmg",
+        "arch": ["x64", "arm64"]
+      }
+    ],
+    "icon": "public/icon.icns",
+    "category": "public.app-category.business"
+  },
+  "linux": {
+    "target": [
+      {
+        "target": "AppImage",
+        "arch": ["x64"]
+      }
+    ],
+    "icon": "public/icon.png",
+    "category": "Office"
+  },
+  "nsis": {
+    "oneClick": false,
+    "perMachine": true,
+    "allowElevation": true,
+    "allowToChangeInstallationDirectory": true,
+    "createDesktopShortcut": true,
+    "createStartMenuShortcut": true,
+    "differentialPackage": true
+  }
+}

@@ -1,0 +1,292 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+model Branch {
+  id          String    @id @default(cuid())
+  name        String
+  slug        String    @unique
+  address     String?
+  phone       String?
+  email       String?
+  timezone    String    @default("Asia/Bangkok")
+  isMain      Boolean   @default(false)
+  isActive    Boolean   @default(true)
+  businessHours Json?
+  taxRate     Float     @default(7)
+  tables      Table[]
+  staff       Staff[]
+  orders      Order[]
+  branchProducts BranchProduct[]
+  dailyReports DailyReport[]
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+}
+
+model BranchProduct {
+  id          String    @id @default(cuid())
+  branchId    String
+  branch      Branch    @relation(fields: [branchId], references: [id])
+  productId   String
+  product     Product   @relation(fields: [productId], references: [id])
+  priceOverride Float?
+  isAvailable Boolean   @default(true)
+  stockQty    Int       @default(0)
+  @@unique([branchId, productId])
+}
+
+model Category {
+  id          String    @id @default(cuid())
+  nameEn      String
+  nameMy      String
+  nameZh      String
+  nameTh      String
+  color       String    @default("#E85D04")
+  sortOrder   Int       @default(0)
+  isActive    Boolean   @default(true)
+  products    Product[]
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+}
+
+model Product {
+  id              String          @id @default(cuid())
+  sku             String?         @unique
+  barcode         String?
+  nameEn          String
+  nameMy          String
+  nameZh          String
+  nameTh          String
+  descriptionEn   String?
+  descriptionMy   String?
+  descriptionZh   String?
+  descriptionTh   String?
+  price           Float
+  costPrice       Float?
+  categoryId      String
+  category        Category        @relation(fields: [categoryId], references: [id])
+  imageUrl        String?
+  isActive        Boolean         @default(true)
+  trackStock      Boolean         @default(false)
+  stockQty        Int             @default(0)
+  lowStockAlert   Int             @default(5)
+  isFavorite      Boolean         @default(false)
+  pricingType     String          @default("per_item")  // per_item | per_unit
+  unit            String?         // kg, g, lb, oz — null for per_item
+  stepWeight      Float?          // increment step for weight (e.g. 0.05 for 50g)
+  vatMode         String          @default("exclusive")
+  variants        ProductVariant[]
+  modifierGroups  ModifierGroup[]
+  orderItems      OrderItem[]
+  branchProducts  BranchProduct[]
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+}
+
+model ProductVariant {
+  id          String    @id @default(cuid())
+  productId   String
+  product     Product   @relation(fields: [productId], references: [id], onDelete: Cascade)
+  nameEn      String
+  nameMy      String
+  nameZh      String
+  nameTh      String
+  price       Float
+  sku         String?
+  isActive    Boolean   @default(true)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+}
+
+model ModifierGroup {
+  id          String      @id @default(cuid())
+  productId   String
+  product     Product     @relation(fields: [productId], references: [id], onDelete: Cascade)
+  nameEn      String
+  nameMy      String
+  nameZh      String
+  nameTh      String
+  required    Boolean     @default(false)
+  multiSelect Boolean     @default(false)
+  minSelect   Int         @default(0)
+  maxSelect   Int         @default(1)
+  modifiers   Modifier[]
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+}
+
+model Modifier {
+  id              String          @id @default(cuid())
+  groupId         String
+  group           ModifierGroup   @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  nameEn          String
+  nameMy          String
+  nameZh          String
+  nameTh          String
+  price           Float           @default(0)
+  isActive        Boolean         @default(true)
+  orderItemMods   OrderItemModifier[]
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+}
+
+model Table {
+  id          String    @id @default(cuid())
+  name        String
+  section     String    @default("Main")
+  seats       Int       @default(4)
+  posX        Float     @default(0)
+  posY        Float     @default(0)
+  width       Float     @default(80)
+  height      Float     @default(80)
+  isActive    Boolean   @default(true)
+  branchId   String?
+  branch      Branch?   @relation(fields: [branchId], references: [id])
+  orders      Order[]
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+}
+
+model Staff {
+  id          String    @id @default(cuid())
+  name        String
+  email       String?   @unique
+  pin         String
+  role        String    @default("cashier")
+  isActive    Boolean   @default(true)
+  branchId   String?
+  branch      Branch?   @relation(fields: [branchId], references: [id])
+  orders      Order[]
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+}
+
+model Customer {
+  id              String    @id @default(cuid())
+  name            String
+  phone           String?   @unique
+  email           String?   @unique
+  points          Int       @default(0)
+  lifetimePoints  Int       @default(0)
+  orders          Order[]
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+}
+
+model Order {
+  id              String      @id @default(cuid())
+  orderNumber     String      @unique
+  type            String      @default("dine-in")
+  status          String      @default("pending")
+  branchId        String?
+  branch          Branch?     @relation(fields: [branchId], references: [id])
+  tableId         String?
+  table           Table?      @relation(fields: [tableId], references: [id])
+  staffId         String?
+  staff           Staff?      @relation(fields: [staffId], references: [id])
+  customerId      String?
+  customer        Customer?   @relation(fields: [customerId], references: [id])
+  items           OrderItem[]
+  payments        Payment[]
+  discounts       Discount[]
+  subtotal        Float       @default(0)
+  taxAmount       Float       @default(0)
+  discountAmount  Float       @default(0)
+  total           Float       @default(0)
+  vatMode         String      @default("exclusive")
+  taxRate         Float       @default(7)
+  notes           String?
+  voidedBy        String?
+  voidReason      String?
+  voidedAt        DateTime?
+  pointsEarned    Int         @default(0)
+  pointsRedeemed  Int         @default(0)
+  isHeld          Boolean     @default(false)
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+}
+
+model OrderItem {
+  id            String              @id @default(cuid())
+  orderId       String
+  order         Order               @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  productId     String
+  product       Product             @relation(fields: [productId], references: [id])
+  variantId     String?
+  nameSnapshot  String
+  priceSnapshot Float
+  quantity      Int                 @default(1)
+  weight        Float?              // weight in kg for per_unit products
+  unit          String?             // unit label (kg, g, etc.)
+  pricingType   String              @default("per_item")  // per_item | per_unit
+  notes         String?
+  modifiers     OrderItemModifier[]
+  subtotal      Float               @default(0)
+  createdAt     DateTime            @default(now())
+  updatedAt     DateTime            @updatedAt
+}
+
+model OrderItemModifier {
+  id            String    @id @default(cuid())
+  orderItemId   String
+  orderItem     OrderItem @relation(fields: [orderItemId], references: [id], onDelete: Cascade)
+  modifierId    String
+  modifier      Modifier  @relation(fields: [modifierId], references: [id])
+  nameSnapshot  String
+  priceSnapshot Float
+  createdAt     DateTime  @default(now())
+}
+
+model Payment {
+  id        String    @id @default(cuid())
+  orderId   String
+  order     Order     @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  method    String
+  amount    Float
+  tendered  Float?
+  change    Float?
+  reference String?
+  createdAt DateTime  @default(now())
+}
+
+model Discount {
+  id        String    @id @default(cuid())
+  orderId   String
+  order     Order     @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  type      String
+  value     Float
+  amount    Float
+  reason    String?
+  createdAt DateTime  @default(now())
+}
+
+model DailyReport {
+  id              String    @id @default(cuid())
+  date            DateTime
+  branchId        String?
+  branch          Branch?   @relation(fields: [branchId], references: [id])
+  @@unique([date, branchId])
+  totalOrders     Int       @default(0)
+  completedOrders Int       @default(0)
+  voidedOrders    Int       @default(0)
+  grossSales      Float     @default(0)
+  discounts       Float     @default(0)
+  netSales        Float     @default(0)
+  taxCollected    Float     @default(0)
+  cashRevenue     Float     @default(0)
+  cardRevenue     Float     @default(0)
+  mobileRevenue   Float     @default(0)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+}
+
+model Settings {
+  id        String    @id @default(cuid())
+  key       String    @unique
+  value     String
+  updatedAt DateTime  @updatedAt
+}

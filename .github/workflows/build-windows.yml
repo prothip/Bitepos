@@ -1,0 +1,81 @@
+name: Build BitePOS Windows
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Reset database for production
+        shell: bash
+        run: |
+          rm -f dev.db dev.db-journal dev.db-wal
+          npx prisma db push --accept-data-loss
+          node -e "
+            const { PrismaLibSql } = require('@prisma/adapter-libsql');
+            const { PrismaClient } = require('@prisma/client');
+            const path = require('path');
+            const bcrypt = require('bcryptjs');
+            const adapter = new PrismaLibSql({ url: 'file:' + path.join(process.cwd(), 'dev.db') });
+            const prisma = new PrismaClient({ adapter });
+            async function main() {
+              const hash = await bcrypt.hash('1234', 10);
+              const mhash = await bcrypt.hash('5678', 10);
+              const branch = await prisma.branch.create({ data: { name: 'Main Branch', slug: 'main', isMain: true, isActive: true, timezone: 'Asia/Bangkok', taxRate: 7 } });
+              await prisma.staff.create({ data: { name: 'Admin', email: 'admin@bitepos.local', pin: hash, role: 'admin', isActive: true, branchId: branch.id } });
+              await prisma.staff.create({ data: { name: 'Manager', email: 'manager@bitepos.local', pin: mhash, role: 'manager', isActive: true, branchId: branch.id } });
+              const settings = [
+                { key: 'shopName', value: 'My Shop' },
+                { key: 'taxRate', value: '7' },
+                { key: 'defaultVatMode', value: 'exclusive' },
+                { key: 'currency', value: 'THB' },
+                { key: 'receiptFooter', value: 'Thank you for your purchase!' },
+              ];
+              for (const s of settings) { await prisma.settings.create({ data: s }); }
+              await prisma.\$disconnect();
+              console.log('Production DB seeded');
+            }
+            main().catch(e => { console.error(e); process.exit(1); });
+          "
+
+      - name: Build Next.js
+        run: npx next build
+        env:
+          JWT_SECRET: bitepos-prod-build-placeholder
+
+      - name: Build Electron app
+        run: npx electron-builder --win --publish never
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: BitePOS-Installer
+          path: dist-electron/*.exe
+          retention-days: 30
+
+      - name: Create GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist-electron/*.exe
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
