@@ -14,7 +14,7 @@ rm -f dev.db dev.db.backup dev.db-journal dev.db-wal
 npx prisma db push --accept-data-loss
 
 # Seed with production defaults
-npx tsx prisma/seed-prod.ts
+npx tsx prisma/seed-prod.js
 
 echo ""
 echo "✅ Done! Database is clean and ready for production."

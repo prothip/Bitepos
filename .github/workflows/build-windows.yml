@@ -41,7 +41,7 @@ jobs:
         run: |
           rm -f dev.db dev.db-journal dev.db-wal
           npx prisma db push --accept-data-loss
-          npx tsx prisma/seed-prod.ts
+          npx tsx prisma/seed-prod.js
         env:
           DATABASE_URL: "file:./dev.db"
 

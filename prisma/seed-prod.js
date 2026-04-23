@@ -1,5 +1,5 @@
-import Database from 'better-sqlite3'
-import path from 'path'
+const Database = require('better-sqlite3')
+const path = require('path')
 
 const db = new Database(path.join(process.cwd(), 'dev.db'))
 
