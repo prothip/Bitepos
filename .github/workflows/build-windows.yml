@@ -34,6 +34,14 @@ jobs:
           DATABASE_URL: "file:./dev.db"
           JWT_SECRET: bitepos-prod-build-placeholder
 
+      - name: Reset & seed production database
+        run: |
+          rm -f dev.db dev.db-journal dev.db-wal
+          npx prisma db push --accept-data-loss
+          npx tsx prisma/seed-prod.ts
+        env:
+          DATABASE_URL: "file:./dev.db"
+
       - name: Build Electron app
         run: npx electron-builder --win --publish never
         env:
