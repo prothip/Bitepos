@@ -41,3 +41,4 @@ public/uploads/
 
 # Electron
 dist/dev.db*
+tsconfig.tsbuildinfo

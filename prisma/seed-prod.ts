@@ -8,27 +8,27 @@ db.pragma('journal_mode = WAL')
 
 console.log('Setting up fresh database for production...')
 
-// Create main branch
-const branchResult = db.prepare(`
-  INSERT INTO Branch (id, name, slug, isMain, isActive, timezone, taxRate, createdAt, updatedAt)
+// Create main branch (INSERT OR IGNORE for idempotency)
+db.prepare(`
+  INSERT OR IGNORE INTO Branch (id, name, slug, isMain, isActive, timezone, taxRate, createdAt, updatedAt)
   VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
 `).run('main-branch', 'Main Branch', 'main', 1, 1, 'Asia/Bangkok', 7)
 
 // Create default admin staff
 db.prepare(`
-  INSERT INTO Staff (id, name, email, pin, role, isActive, branchId, createdAt, updatedAt)
+  INSERT OR IGNORE INTO Staff (id, name, email, pin, role, isActive, branchId, createdAt, updatedAt)
   VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
 `).run('admin-staff', 'Admin', 'admin@bitepos.app', '1234', 'admin', 1, 'main-branch')
 
 // Create default manager staff
 db.prepare(`
-  INSERT INTO Staff (id, name, email, pin, role, isActive, branchId, createdAt, updatedAt)
+  INSERT OR IGNORE INTO Staff (id, name, email, pin, role, isActive, branchId, createdAt, updatedAt)
   VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
 `).run('manager-staff', 'Manager', 'manager@bitepos.app', '5678', 'manager', 1, 'main-branch')
 
 // Default settings
 const insertSetting = db.prepare(`
-  INSERT INTO Settings (id, key, value, updatedAt)
+  INSERT OR IGNORE INTO Settings (id, key, value, updatedAt)
   VALUES (?, ?, ?, datetime('now'))
 `)
 
