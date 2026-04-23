@@ -1,85 +1,54 @@
-import { PrismaClient } from '@prisma/client'
-import { PrismaLibSql } from '@prisma/adapter-libsql'
+import Database from 'better-sqlite3'
 import path from 'path'
 
-const adapter = new PrismaLibSql({ url: `file:${path.join(process.cwd(), 'dev.db')}` })
-const prisma = new PrismaClient({ adapter })
+const db = new Database(path.join(process.cwd(), 'dev.db'))
 
-async function main() {
-  console.log('Setting up fresh database for production...')
+// Enable WAL mode for better performance
+db.pragma('journal_mode = WAL')
 
-  // Create main branch
-  const branch = await prisma.branch.upsert({
-    where: { slug: 'main' },
-    update: {},
-    create: {
-      name: 'Main Branch',
-      slug: 'main',
-      isMain: true,
-      isActive: true,
-      timezone: 'Asia/Bangkok',
-      taxRate: 7,
-    },
-  })
+console.log('Setting up fresh database for production...')
 
-  // Create default admin staff
-  await prisma.staff.upsert({
-    where: { email: 'admin@bitepos.app' },
-    update: {},
-    create: {
-      name: 'Admin',
-      email: 'admin@bitepos.app',
-      pin: '1234',
-      role: 'admin',
-      isActive: true,
-      branchId: branch.id,
-    },
-  })
+// Create main branch
+const branchResult = db.prepare(`
+  INSERT INTO Branch (id, name, slug, isMain, isActive, timezone, taxRate, createdAt, updatedAt)
+  VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
+`).run('main-branch', 'Main Branch', 'main', 1, 1, 'Asia/Bangkok', 7)
 
-  // Create default manager staff
-  await prisma.staff.upsert({
-    where: { email: 'manager@bitepos.app' },
-    update: {},
-    create: {
-      name: 'Manager',
-      email: 'manager@bitepos.app',
-      pin: '5678',
-      role: 'manager',
-      isActive: true,
-      branchId: branch.id,
-    },
-  })
+// Create default admin staff
+db.prepare(`
+  INSERT INTO Staff (id, name, email, pin, role, isActive, branchId, createdAt, updatedAt)
+  VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
+`).run('admin-staff', 'Admin', 'admin@bitepos.app', '1234', 'admin', 1, 'main-branch')
 
-  // Default settings
-  const defaultSettings = [
-    { key: 'shopName', value: 'My Shop' },
-    { key: 'taxRate', value: '7' },
-    { key: 'defaultVatMode', value: 'exclusive' },
-    { key: 'currency', value: 'THB' },
-    { key: 'pointsPerBaht', value: '1' },
-    { key: 'redeemRate', value: '100' },
-    { key: 'receiptFooter', value: 'Thank you for your purchase!' },
-  ]
+// Create default manager staff
+db.prepare(`
+  INSERT INTO Staff (id, name, email, pin, role, isActive, branchId, createdAt, updatedAt)
+  VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
+`).run('manager-staff', 'Manager', 'manager@bitepos.app', '5678', 'manager', 1, 'main-branch')
 
-  for (const s of defaultSettings) {
-    await prisma.settings.upsert({
-      where: { key: s.key },
-      update: {},
-      create: s,
-    })
-  }
+// Default settings
+const insertSetting = db.prepare(`
+  INSERT INTO Settings (id, key, value, updatedAt)
+  VALUES (?, ?, ?, datetime('now'))
+`)
 
-  console.log('✅ Production database ready!')
-  console.log('   Admin PIN: 1234')
-  console.log('   Manager PIN: 5678')
-  console.log('   → Change these PINs after first login!')
+const settings = [
+  ['setting-shopName', 'shopName', 'My Shop'],
+  ['setting-taxRate', 'taxRate', '7'],
+  ['setting-defaultVatMode', 'defaultVatMode', 'exclusive'],
+  ['setting-currency', 'currency', 'THB'],
+  ['setting-pointsPerBaht', 'pointsPerBaht', '1'],
+  ['setting-redeemRate', 'redeemRate', '100'],
+  ['setting-receiptFooter', 'receiptFooter', 'Thank you for your purchase!'],
+]
+
+for (const [id, key, value] of settings) {
+  insertSetting.run(id, key, value)
 }
 
-main()
-  .catch((e) => {
-    console.error('Seed failed:', e)
-    process.exit(1)
-  })
-  .finally(async () => {
-    await prisma.$disconnect()
-  })
+db.close()
+
+console.log('✅ Production database ready!')
+console.log('   Admin PIN: 1234')
+console.log('   Manager PIN: 5678')
+console.log('   → Change these PINs after first login!')

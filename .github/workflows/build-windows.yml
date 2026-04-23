@@ -43,6 +43,11 @@ jobs:
         env:
           DATABASE_URL: "file:./dev.db"
 
+      - name: Verify database
+        shell: bash
+        run: |
+          npx tsx -e "const db=require('better-sqlite3')('./dev.db'); const r=db.prepare('SELECT count(*) as c FROM Staff').get(); console.log('Staff count:', r.c); db.close()"
+
       - name: Build Electron app
         run: npx electron-builder --win --publish never
         env:
