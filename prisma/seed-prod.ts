@@ -1,8 +1,9 @@
 import { PrismaClient } from '@prisma/client'
+import { PrismaLibSql } from '@prisma/adapter-libsql'
+import path from 'path'
 
-const prisma = new PrismaClient({
-  datasourceUrl: `file:./dev.db`,
-})
+const adapter = new PrismaLibSql({ url: `file:${path.join(process.cwd(), 'dev.db')}` })
+const prisma = new PrismaClient({ adapter })
 
 async function main() {
   console.log('Setting up fresh database for production...')
