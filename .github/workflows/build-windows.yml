@@ -24,7 +24,9 @@ jobs:
         run: npm ci
 
       - name: Generate Prisma client
-        run: npx prisma generate
+        run: |
+          npx prisma generate
+          node scripts/patch-prisma.mjs
         env:
           DATABASE_URL: "file:./dev.db"
 

@@ -40,4 +40,4 @@ npm-debug.log*
 public/uploads/
 
 # Electron
-dist/
+dist/dev.db*
