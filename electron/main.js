@@ -5,14 +5,14 @@ const { spawn } = require('child_process')
 let mainWindow
 let nextProcess
 
-const isDev = process.env.NODE_ENV !== 'production'
+const isDev = process.env.NODE_ENV !== 'production' || process.env.OPENCLAW_DEV === '1'
 const PORT = process.env.PORT || 3331
 
 // --- Auto-updater ---
 let autoUpdater = null
 
 function setupAutoUpdater() {
-  if (isDev) return // No auto-update in dev
+  if (isDev) return
 
   try {
     autoUpdater = require('electron-updater').autoUpdater
@@ -24,19 +24,10 @@ function setupAutoUpdater() {
   autoUpdater.autoDownload = false
   autoUpdater.autoInstallOnAppQuit = true
 
-  // Configure update source — change this to your actual update server
-  // Options: GitHub Releases, custom server, or S3
   autoUpdater.setFeedURL({
     provider: 'generic',
-    url: 'https://updates.bitepos.com' // Change to your update server
+    url: 'https://updates.bitepos.com'
   })
-
-  // Or use GitHub Releases:
-  // autoUpdater.setFeedURL({
-  //   provider: 'github',
-  //   owner: 'your-github-org',
-  //   repo: 'bitepos'
-  // })
 
   autoUpdater.on('checking-for-update', () => {
     console.log('Checking for updates...')
@@ -78,14 +69,12 @@ function setupAutoUpdater() {
     sendToWindow('update-status', { status: 'error', error: err.message })
   })
 
-  // Check for updates on launch (after 3s delay)
   setTimeout(() => {
     autoUpdater.checkForUpdates().catch(err => {
       console.error('Update check failed:', err.message)
     })
   }, 3000)
 
-  // Check every 4 hours
   setInterval(() => {
     autoUpdater.checkForUpdates().catch(() => {})
   }, 4 * 60 * 60 * 1000)
@@ -134,27 +123,30 @@ function createWindow() {
 
 function startNextServer() {
   return new Promise((resolve, reject) => {
-    const nextBin = isDev ? 'next' : path.join(process.resourcesPath, 'app', 'node_modules', '.bin', 'next')
-    const cwd = isDev ? process.cwd() : path.join(process.resourcesPath, 'app')
+    // Use standalone server from .next/standalone
+    const standaloneDir = path.join(process.resourcesPath, 'app', '.next', 'standalone')
+    const serverFile = path.join(standaloneDir, 'server.js')
 
-    nextProcess = spawn(
-      isDev ? 'npm' : nextBin,
-      isDev ? ['run', 'dev'] : ['start'],
-      {
-        cwd,
-        env: {
-          ...process.env,
-          PORT: String(PORT),
-          NODE_ENV: isDev ? 'development' : 'production',
-        },
-        shell: true,
-      }
-    )
+    console.log('Starting Next.js standalone server from:', standaloneDir)
+
+    // Set up environment for standalone server
+    const serverEnv = {
+      ...process.env,
+      PORT: String(PORT),
+      NODE_ENV: 'production',
+      HOSTNAME: 'localhost',
+    }
+
+    nextProcess = spawn(process.execPath, [serverFile], {
+      cwd: standaloneDir,
+      env: serverEnv,
+      stdio: ['pipe', 'pipe', 'pipe'],
+    })
 
     nextProcess.stdout.on('data', (data) => {
       const output = data.toString()
       console.log('Next.js:', output)
-      if (output.includes('ready') || output.includes('started')) {
+      if (output.includes('ready') || output.includes('started') || output.includes('Listening')) {
         resolve()
       }
     })
@@ -168,8 +160,8 @@ function startNextServer() {
       reject(err)
     })
 
-    // Timeout fallback
-    setTimeout(resolve, 5000)
+    // Timeout fallback — server might start without printing "ready"
+    setTimeout(resolve, 8000)
   })
 }
 
@@ -182,8 +174,16 @@ async function loadApp() {
       setTimeout(() => loadApp(), 2000)
     }
   } else {
-    await startNextServer()
-    mainWindow.loadURL(`http://localhost:${PORT}/en/login`)
+    try {
+      await startNextServer()
+      // Wait a bit for server to be ready
+      await new Promise(r => setTimeout(r, 1000))
+      await mainWindow.loadURL(`http://localhost:${PORT}/en/login`)
+    } catch (err) {
+      console.error('Failed to start app:', err)
+      // Fallback: show error page
+      mainWindow.loadURL(`data:text/html,<h1>Failed to start server</h1><p>${err.message}</p>`)
+    }
   }
 }
 
@@ -191,10 +191,8 @@ app.whenReady().then(async () => {
   createWindow()
   await loadApp()
 
-  // Setup auto-updater
   setupAutoUpdater()
 
-  // Set application menu
   const template = [
     {
       label: 'BitePOS POS',
@@ -270,7 +268,6 @@ ipcMain.handle('open-cash-drawer', async () => {
   return { success: true }
 })
 
-// Auto-update IPC handlers
 ipcMain.handle('check-for-updates', async () => {
   if (!autoUpdater) return { available: false, error: 'Auto-updater not available' }
   try {
@@ -293,11 +290,9 @@ ipcMain.handle('download-update', async () => {
 
 ipcMain.handle('install-update', async () => {
   if (!autoUpdater) return
-  // Will quit and install on next launch
   autoUpdater.quitAndInstall(false, true)
 })
 
 ipcMain.handle('get-update-status', async () => {
-  // Return current update state — just a placeholder, real state comes from events
   return { status: 'idle' }
 })

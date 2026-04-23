@@ -53,7 +53,9 @@ jobs:
           npx tsx -e "const db=require('better-sqlite3')('./dev.db'); const r=db.prepare('SELECT count(*) as c FROM Staff').get(); console.log('Staff count:', r.c); db.close()"
 
       - name: Build Electron app
-        run: npx electron-builder --win --publish never
+        run: |
+          node scripts/prepare-standalone.mjs
+          npx electron-builder --win --publish never
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 

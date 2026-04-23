@@ -14,7 +14,7 @@
     "db:seed": "tsx prisma/seed.ts",
     "db:studio": "prisma studio",
     "electron": "electron .",
-    "electron:pack": "npm run build && electron-builder"
+    "electron:pack": "npm run build && node scripts/prepare-standalone.mjs && electron-builder"
   },
   "build": {
     "appId": "com.bitepos.pos",
