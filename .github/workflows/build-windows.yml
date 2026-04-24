@@ -55,7 +55,9 @@ jobs:
       - name: Build Electron app
         run: |
           node scripts/prepare-standalone.mjs
-          npx electron-builder --win --config .electron-builder.json --publish never
+          dir .next\standalone 2>nul || echo "standalone dir missing"
+          dir dev.db 2>nul || echo "dev.db missing"
+          npx electron-builder --win --config .electron-builder.json --publish never 2>&1
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
