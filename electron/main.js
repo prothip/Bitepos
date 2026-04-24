@@ -106,9 +106,8 @@ function createWindow() {
 
   mainWindow.once('ready-to-show', () => {
     mainWindow.show()
-    if (isDev) {
-      mainWindow.webContents.openDevTools()
-    }
+    // DEBUG: always open DevTools to see console errors
+    mainWindow.webContents.openDevTools()
   })
 
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
@@ -123,17 +122,34 @@ function createWindow() {
 
 function startNextServer() {
   return new Promise((resolve, reject) => {
+    const fs = require('fs')
+    
     // extraResources copies .next/standalone → resources/app/
-    // So server.js is at resources/app/server.js, NOT resources/app/.next/standalone/
     const standaloneDir = path.join(process.resourcesPath, 'app')
     const serverFile = path.join(standaloneDir, 'server.js')
     const dbPath = path.join(standaloneDir, 'dev.db')
 
-    console.log('Starting Next.js standalone server from:', standaloneDir)
-    console.log('Server file:', serverFile)
-    console.log('DB path:', dbPath)
-    console.log('Server file exists:', require('fs').existsSync(serverFile))
-    console.log('DB exists:', require('fs').existsSync(dbPath))
+    console.log('=== DEBUG INFO ===')
+    console.log('resourcesPath:', process.resourcesPath)
+    console.log('standaloneDir:', standaloneDir)
+    console.log('serverFile:', serverFile)
+    console.log('dbPath:', dbPath)
+    console.log('serverFile exists:', fs.existsSync(serverFile))
+    console.log('dbPath exists:', fs.existsSync(dbPath))
+    console.log('app.getAppPath():', app.getAppPath())
+    console.log('execPath:', process.execPath)
+    
+    // List what's actually in resources/app/
+    try {
+      console.log('Contents of resources/app/:', fs.readdirSync(standaloneDir))
+      const nextDir = path.join(standaloneDir, '.next')
+      if (fs.existsSync(nextDir)) {
+        console.log('Contents of resources/app/.next/:', fs.readdirSync(nextDir))
+      }
+    } catch(e) {
+      console.log('Cannot list dir:', e.message)
+    }
+    console.log('=== END DEBUG ===')
 
     // Set up environment for standalone server
     const serverEnv = {
@@ -142,6 +158,12 @@ function startNextServer() {
       NODE_ENV: 'production',
       HOSTNAME: 'localhost',
       DATABASE_URL: `file:${dbPath}`,
+    }
+
+    if (!fs.existsSync(serverFile)) {
+      const err = new Error(`server.js not found at ${serverFile}`)
+      reject(err)
+      return
     }
 
     nextProcess = spawn(process.execPath, [serverFile], {
@@ -188,8 +210,13 @@ async function loadApp() {
       await mainWindow.loadURL(`http://localhost:${PORT}/en/login`)
     } catch (err) {
       console.error('Failed to start app:', err)
-      // Fallback: show error page with details
-      mainWindow.loadURL(`data:text/html,<html><body style='font-family:sans-serif;padding:40px'><h1>Failed to start server</h1><p>${encodeURIComponent(err.message)}</p><p>Please check the logs and try again.</p></body></html>`)
+      // Show error page with full details
+      const errorHtml = `<html><body style="font-family:monospace;padding:40px;background:#1a1a2e;color:#eee">
+        <h1 style="color:#e94560">BitePOS - Server Failed to Start</h1>
+        <pre style="background:#16213e;padding:20px;border-radius:8px;overflow:auto">${err.message}\n\nresourcesPath: ${process.resourcesPath}\nappPath: ${app.getAppPath()}</pre>
+        <p>Press Ctrl+Shift+I to open DevTools for more details.</p>
+      </body></html>`
+      mainWindow.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(errorHtml))
     }
   }
 }
