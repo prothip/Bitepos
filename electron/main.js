@@ -154,35 +154,34 @@ function checkServerReady(maxAttempts = 30, intervalMs = 500) {
 
 function startNextServer() {
   return new Promise((resolve, reject) => {
-    const standaloneDir = path.join(process.resourcesPath, 'nextjs-standalone')
+    // Standalone server is inside the ASAR at .next/standalone/
+    // ASAR paths work for reading, but native modules need unpacked paths
+    const appPath = app.getAppPath()
+    const isAsar = appPath.includes('.asar')
+    const standaloneDir = isAsar
+      ? appPath.replace('.asar', '.asar.unpacked') + '/.next/standalone'
+      : path.join(appPath, '.next', 'standalone')
     const serverFile = path.join(standaloneDir, 'server.js')
     const dbPath = path.join(standaloneDir, 'dev.db')
 
     console.log('=== BITEPOS DEBUG ===')
-    console.log('resourcesPath:', process.resourcesPath)
+    console.log('appPath:', appPath)
+    console.log('isAsar:', isAsar)
     console.log('standaloneDir:', standaloneDir)
     console.log('serverFile:', serverFile)
-    console.log('dbPath:', dbPath)
     console.log('serverFile exists:', fs.existsSync(serverFile))
     console.log('dbPath exists:', fs.existsSync(dbPath))
-    console.log('app.getAppPath():', app.getAppPath())
-    console.log('execPath:', process.execPath)
-    
-    try {
-      console.log('Contents of resources/app/:', fs.readdirSync(standaloneDir))
-      const nextDir = path.join(standaloneDir, '.next')
-      if (fs.existsSync(nextDir)) {
-        console.log('Contents of resources/app/.next/:', fs.readdirSync(nextDir))
-      } else {
-        console.log('resources/app/.next/ does NOT exist!')
-      }
-    } catch(e) {
-      console.log('Cannot list dir:', e.message)
-    }
     console.log('=== END DEBUG ===')
 
     if (!fs.existsSync(serverFile)) {
-      reject(new Error(`server.js not found at ${serverFile}\n\nDirectory contents: ${JSON.stringify(fs.readdirSync(standaloneDir))}`))
+      // Fallback: try reading from ASAR (fs can read inside asar)
+      const asarDir = path.join(appPath, '.next', 'standalone')
+      if (fs.existsSync(path.join(asarDir, 'server.js'))) {
+        console.log('Found server.js inside ASAR, but need unpacked for native modules')
+        reject(new Error('Server found in ASAR but native modules need unpacked. Check asarUnpack config.'))
+        return
+      }
+      reject(new Error(`server.js not found at ${serverFile}`))
       return
     }
 

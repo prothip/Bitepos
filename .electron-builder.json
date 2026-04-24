@@ -12,34 +12,25 @@
     ".next/standalone/**/*",
     ".next/static/**/*",
     "public/**/*",
+    "prisma/**/*",
+    "dev.db",
     "node_modules/**/*",
     "!node_modules/electron/**",
-    "!node_modules/electron-builder/**"
+    "!node_modules/electron-builder/**",
+    "!node_modules/@electric-sql/**"
+  ],
+  "asarUnpack": [
+    ".next/standalone/node_modules/**/*.node",
+    ".next/standalone/node_modules/**/package.json",
+    "node_modules/better-sqlite3/**/*",
+    "node_modules/@prisma/**/*",
+    "node_modules/.prisma/**/*",
+    "node_modules/@libsql/**/*"
   ],
   "extraResources": [
     {
-      "from": ".next/standalone",
-      "to": "nextjs-standalone",
-      "filter": ["**/*"]
-    },
-    {
-      "from": ".next/static",
-      "to": "nextjs-standalone/.next/static",
-      "filter": ["**/*"]
-    },
-    {
-      "from": "dev.db",
-      "to": "nextjs-standalone/dev.db"
-    },
-    {
-      "from": "prisma",
-      "to": "nextjs-standalone/prisma",
-      "filter": ["**/*"]
-    },
-    {
-      "from": "public",
-      "to": "nextjs-standalone/public",
-      "filter": ["**/*"]
+      "from": "public/fonts/",
+      "to": "fonts/"
     }
   ],
   "publish": {

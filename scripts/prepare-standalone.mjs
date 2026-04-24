@@ -1,6 +1,6 @@
 // Prepare standalone Next.js build for Electron packaging
 // Copies static, public, prisma, and DB files into the standalone directory
-import { cpSync, existsSync, mkdirSync, writeFileSync } from 'fs'
+import { cpSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs'
 import { join } from 'path'
 
 const root = process.cwd()
@@ -40,19 +40,21 @@ if (existsSync(dbFile)) {
   console.log('✅ Copied dev.db → .next/standalone/dev.db')
 }
 
-// Ensure standalone server.js has proper DATABASE_URL handling
-// The standalone server needs to know where the DB is
-import { readFileSync } from 'fs'
+// Fix server.js: replace hardcoded absolute paths with relative paths
+// and fix DATABASE_URL to use __dirname-relative path
 const serverJs = join(standaloneDir, 'server.js')
 if (existsSync(serverJs)) {
   let content = readFileSync(serverJs, 'utf8')
-  // Add DATABASE_URL fallback if not present
-  if (!content.includes('DATABASE_URL')) {
-    const dbPathFallback = `file:${join(standaloneDir, 'dev.db').replace(/\\/g, '/')}`
-    content = `process.env.DATABASE_URL = process.env.DATABASE_URL || '${dbPathFallback}';\n${content}`
-    writeFileSync(serverJs, content)
-    console.log('✅ Added DATABASE_URL fallback to server.js')
-  }
+  
+  // Remove any previously injected DATABASE_URL line (from older builds)
+  content = content.replace(/process\.env\.DATABASE_URL\s*=\s*process\.env\.DATABASE_URL\s*\|\|\s*[^;]+;\n?/g, '')
+  
+  // Add DATABASE_URL that uses __dirname (relative to where server.js lives)
+  // This works because dev.db is in the same directory as server.js
+  content = `process.env.DATABASE_URL = process.env.DATABASE_URL || 'file:' + require('path').join(__dirname, 'dev.db');\n${content}`
+  
+  writeFileSync(serverJs, content)
+  console.log('✅ Fixed DATABASE_URL in server.js to use __dirname-relative path')
 }
 
 console.log('🎉 Standalone build ready for Electron packaging')
