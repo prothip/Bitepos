@@ -26,6 +26,20 @@
       "from": ".next/static",
       "to": "app/.next/static",
       "filter": ["**/*"]
+    },
+    {
+      "from": "dev.db",
+      "to": "app/dev.db"
+    },
+    {
+      "from": "prisma",
+      "to": "app/prisma",
+      "filter": ["**/*"]
+    },
+    {
+      "from": "public",
+      "to": "app/public",
+      "filter": ["**/*"]
     }
   ],
   "publish": {

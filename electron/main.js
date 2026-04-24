@@ -123,11 +123,17 @@ function createWindow() {
 
 function startNextServer() {
   return new Promise((resolve, reject) => {
-    // Use standalone server from .next/standalone
-    const standaloneDir = path.join(process.resourcesPath, 'app', '.next', 'standalone')
+    // extraResources copies .next/standalone → resources/app/
+    // So server.js is at resources/app/server.js, NOT resources/app/.next/standalone/
+    const standaloneDir = path.join(process.resourcesPath, 'app')
     const serverFile = path.join(standaloneDir, 'server.js')
+    const dbPath = path.join(standaloneDir, 'dev.db')
 
     console.log('Starting Next.js standalone server from:', standaloneDir)
+    console.log('Server file:', serverFile)
+    console.log('DB path:', dbPath)
+    console.log('Server file exists:', require('fs').existsSync(serverFile))
+    console.log('DB exists:', require('fs').existsSync(dbPath))
 
     // Set up environment for standalone server
     const serverEnv = {
@@ -135,6 +141,7 @@ function startNextServer() {
       PORT: String(PORT),
       NODE_ENV: 'production',
       HOSTNAME: 'localhost',
+      DATABASE_URL: `file:${dbPath}`,
     }
 
     nextProcess = spawn(process.execPath, [serverFile], {
@@ -181,8 +188,8 @@ async function loadApp() {
       await mainWindow.loadURL(`http://localhost:${PORT}/en/login`)
     } catch (err) {
       console.error('Failed to start app:', err)
-      // Fallback: show error page
-      mainWindow.loadURL(`data:text/html,<h1>Failed to start server</h1><p>${err.message}</p>`)
+      // Fallback: show error page with details
+      mainWindow.loadURL(`data:text/html,<html><body style='font-family:sans-serif;padding:40px'><h1>Failed to start server</h1><p>${encodeURIComponent(err.message)}</p><p>Please check the logs and try again.</p></body></html>`)
     }
   }
 }

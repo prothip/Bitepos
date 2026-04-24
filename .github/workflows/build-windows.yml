@@ -55,7 +55,7 @@ jobs:
       - name: Build Electron app
         run: |
           node scripts/prepare-standalone.mjs
-          npx electron-builder --win --publish never
+          npx electron-builder --win --config .electron-builder.json --publish never
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -63,13 +63,13 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: BitePOS-Installer
-          path: dist-electron/*.exe
+          path: dist/*.exe
           retention-days: 30
 
       - name: Create GitHub Release
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
-          files: dist-electron/*.exe
+          files: dist/*.exe
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

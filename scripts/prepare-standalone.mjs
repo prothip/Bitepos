@@ -1,6 +1,6 @@
 // Prepare standalone Next.js build for Electron packaging
-// Copies static and public files into the standalone directory
-import { cpSync, existsSync, mkdirSync } from 'fs'
+// Copies static, public, prisma, and DB files into the standalone directory
+import { cpSync, existsSync, mkdirSync, writeFileSync } from 'fs'
 import { join } from 'path'
 
 const root = process.cwd()
@@ -38,6 +38,20 @@ const dbFile = join(root, 'dev.db')
 if (existsSync(dbFile)) {
   cpSync(dbFile, join(standaloneDir, 'dev.db'))
   console.log('✅ Copied dev.db → .next/standalone/dev.db')
+}
+
+// Ensure standalone server.js has proper DATABASE_URL handling
+// The standalone server needs to know where the DB is
+const serverJs = join(standaloneDir, 'server.js')
+if (existsSync(serverJs)) {
+  let content = require('fs').readFileSync(serverJs, 'utf8')
+  // Add DATABASE_URL fallback if not present
+  if (!content.includes('DATABASE_URL')) {
+    const dbPathFallback = `file:${join(standaloneDir, 'dev.db').replace(/\\/g, '/')}`
+    content = `process.env.DATABASE_URL = process.env.DATABASE_URL || '${dbPathFallback}';\n${content}`
+    writeFileSync(serverJs, content)
+    console.log('✅ Added DATABASE_URL fallback to server.js')
+  }
 }
 
 console.log('🎉 Standalone build ready for Electron packaging')
