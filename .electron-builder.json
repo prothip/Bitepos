@@ -7,6 +7,7 @@
     "buildResources": "public"
   },
   "files": [
+    "package.json",
     "electron/**/*",
     ".next/standalone/**/*",
     ".next/static/**/*",
