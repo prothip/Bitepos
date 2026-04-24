@@ -42,9 +42,10 @@ if (existsSync(dbFile)) {
 
 // Ensure standalone server.js has proper DATABASE_URL handling
 // The standalone server needs to know where the DB is
+import { readFileSync } from 'fs'
 const serverJs = join(standaloneDir, 'server.js')
 if (existsSync(serverJs)) {
-  let content = require('fs').readFileSync(serverJs, 'utf8')
+  let content = readFileSync(serverJs, 'utf8')
   // Add DATABASE_URL fallback if not present
   if (!content.includes('DATABASE_URL')) {
     const dbPathFallback = `file:${join(standaloneDir, 'dev.db').replace(/\\/g, '/')}`

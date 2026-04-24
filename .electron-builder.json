@@ -2,7 +2,6 @@
   "appId": "com.bitepos.pos",
   "productName": "BitePOS POS",
   "copyright": "Copyright 2024 BitePOS",
-  "main": "electron/main.js",
   "directories": {
     "output": "dist-electron",
     "buildResources": "public"
