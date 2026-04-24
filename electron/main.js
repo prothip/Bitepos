@@ -1,9 +1,12 @@
 const { app, BrowserWindow, ipcMain, Menu, shell, dialog } = require('electron')
 const path = require('path')
 const { spawn } = require('child_process')
+const http = require('http')
+const fs = require('fs')
 
 let mainWindow
 let nextProcess
+let serverLogs = []
 
 const isDev = process.env.NODE_ENV !== 'production' || process.env.OPENCLAW_DEV === '1'
 const PORT = process.env.PORT || 3331
@@ -106,7 +109,7 @@ function createWindow() {
 
   mainWindow.once('ready-to-show', () => {
     mainWindow.show()
-    // DEBUG: always open DevTools to see console errors
+    // DEBUG: always open DevTools
     mainWindow.webContents.openDevTools()
   })
 
@@ -120,16 +123,42 @@ function createWindow() {
   })
 }
 
+function checkServerReady(maxAttempts = 30, intervalMs = 500) {
+  return new Promise((resolve) => {
+    let attempts = 0
+    const check = () => {
+      attempts++
+      const req = http.get(`http://localhost:${PORT}/`, (res) => {
+        resolve(true)
+        res.resume() // consume response
+      })
+      req.on('error', () => {
+        if (attempts >= maxAttempts) {
+          resolve(false)
+        } else {
+          setTimeout(check, intervalMs)
+        }
+      })
+      req.setTimeout(2000, () => {
+        req.destroy()
+        if (attempts >= maxAttempts) {
+          resolve(false)
+        } else {
+          setTimeout(check, intervalMs)
+        }
+      })
+    }
+    check()
+  })
+}
+
 function startNextServer() {
   return new Promise((resolve, reject) => {
-    const fs = require('fs')
-    
-    // extraResources copies .next/standalone → resources/app/
     const standaloneDir = path.join(process.resourcesPath, 'app')
     const serverFile = path.join(standaloneDir, 'server.js')
     const dbPath = path.join(standaloneDir, 'dev.db')
 
-    console.log('=== DEBUG INFO ===')
+    console.log('=== BITEPOS DEBUG ===')
     console.log('resourcesPath:', process.resourcesPath)
     console.log('standaloneDir:', standaloneDir)
     console.log('serverFile:', serverFile)
@@ -139,31 +168,30 @@ function startNextServer() {
     console.log('app.getAppPath():', app.getAppPath())
     console.log('execPath:', process.execPath)
     
-    // List what's actually in resources/app/
     try {
       console.log('Contents of resources/app/:', fs.readdirSync(standaloneDir))
       const nextDir = path.join(standaloneDir, '.next')
       if (fs.existsSync(nextDir)) {
         console.log('Contents of resources/app/.next/:', fs.readdirSync(nextDir))
+      } else {
+        console.log('resources/app/.next/ does NOT exist!')
       }
     } catch(e) {
       console.log('Cannot list dir:', e.message)
     }
     console.log('=== END DEBUG ===')
 
-    // Set up environment for standalone server
+    if (!fs.existsSync(serverFile)) {
+      reject(new Error(`server.js not found at ${serverFile}\n\nDirectory contents: ${JSON.stringify(fs.readdirSync(standaloneDir))}`))
+      return
+    }
+
     const serverEnv = {
       ...process.env,
       PORT: String(PORT),
       NODE_ENV: 'production',
       HOSTNAME: 'localhost',
       DATABASE_URL: `file:${dbPath}`,
-    }
-
-    if (!fs.existsSync(serverFile)) {
-      const err = new Error(`server.js not found at ${serverFile}`)
-      reject(err)
-      return
     }
 
     nextProcess = spawn(process.execPath, [serverFile], {
@@ -174,14 +202,14 @@ function startNextServer() {
 
     nextProcess.stdout.on('data', (data) => {
       const output = data.toString()
+      serverLogs.push(output)
       console.log('Next.js:', output)
-      if (output.includes('ready') || output.includes('started') || output.includes('Listening')) {
-        resolve()
-      }
     })
 
     nextProcess.stderr.on('data', (data) => {
-      console.error('Next.js Error:', data.toString())
+      const output = data.toString()
+      serverLogs.push('[STDERR] ' + output)
+      console.error('Next.js Error:', output)
     })
 
     nextProcess.on('error', (err) => {
@@ -189,8 +217,21 @@ function startNextServer() {
       reject(err)
     })
 
-    // Timeout fallback — server might start without printing "ready"
-    setTimeout(resolve, 8000)
+    nextProcess.on('exit', (code, signal) => {
+      console.log(`Next.js process exited with code ${code}, signal ${signal}`)
+      if (code !== 0 && code !== null) {
+        serverLogs.push(`Process exited with code ${code}`)
+      }
+    })
+
+    // Wait for server to actually respond
+    checkServerReady(40, 500).then(ready => {
+      if (ready) {
+        resolve()
+      } else {
+        reject(new Error(`Server did not respond after 20s.\n\nServer logs:\n${serverLogs.join('\n')}`))
+      }
+    })
   })
 }
 
@@ -205,20 +246,21 @@ async function loadApp() {
   } else {
     try {
       await startNextServer()
-      // Wait a bit for server to be ready
-      await new Promise(r => setTimeout(r, 1000))
       await mainWindow.loadURL(`http://localhost:${PORT}/en/login`)
     } catch (err) {
       console.error('Failed to start app:', err)
-      // Show error page with full details
-      const errorHtml = `<html><body style="font-family:monospace;padding:40px;background:#1a1a2e;color:#eee">
+      const errorHtml = `<!DOCTYPE html><html><body style="font-family:monospace;padding:40px;background:#1a1a2e;color:#eee">
         <h1 style="color:#e94560">BitePOS - Server Failed to Start</h1>
-        <pre style="background:#16213e;padding:20px;border-radius:8px;overflow:auto">${err.message}\n\nresourcesPath: ${process.resourcesPath}\nappPath: ${app.getAppPath()}</pre>
+        <pre style="background:#16213e;padding:20px;border-radius:8px;overflow:auto;white-space:pre-wrap">${escapeHtml(err.message)}</pre>
         <p>Press Ctrl+Shift+I to open DevTools for more details.</p>
       </body></html>`
       mainWindow.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(errorHtml))
     }
   }
+}
+
+function escapeHtml(str) {
+  return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
 }
 
 app.whenReady().then(async () => {
