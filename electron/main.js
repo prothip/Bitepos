@@ -154,7 +154,7 @@ function checkServerReady(maxAttempts = 30, intervalMs = 500) {
 
 function startNextServer() {
   return new Promise((resolve, reject) => {
-    const standaloneDir = path.join(process.resourcesPath, 'app')
+    const standaloneDir = path.join(process.resourcesPath, 'nextjs-standalone')
     const serverFile = path.join(standaloneDir, 'server.js')
     const dbPath = path.join(standaloneDir, 'dev.db')
 

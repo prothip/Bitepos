@@ -18,26 +18,26 @@
   "extraResources": [
     {
       "from": ".next/standalone",
-      "to": "app",
+      "to": "nextjs-standalone",
       "filter": ["**/*"]
     },
     {
       "from": ".next/static",
-      "to": "app/.next/static",
+      "to": "nextjs-standalone/.next/static",
       "filter": ["**/*"]
     },
     {
       "from": "dev.db",
-      "to": "app/dev.db"
+      "to": "nextjs-standalone/dev.db"
     },
     {
       "from": "prisma",
-      "to": "app/prisma",
+      "to": "nextjs-standalone/prisma",
       "filter": ["**/*"]
     },
     {
       "from": "public",
-      "to": "app/public",
+      "to": "nextjs-standalone/public",
       "filter": ["**/*"]
     }
   ],
