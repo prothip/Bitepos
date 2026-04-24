@@ -4,7 +4,7 @@
   "copyright": "Copyright 2024 BitePOS",
   "main": "electron/main.js",
   "directories": {
-    "output": "dist",
+    "output": "dist-electron",
     "buildResources": "public"
   },
   "files": [
@@ -53,7 +53,7 @@
         "arch": ["x64"]
       }
     ],
-    "icon": "public/icon.ico"
+    "icon": "public/icon.png"
   },
   "mac": {
     "target": [
@@ -62,7 +62,7 @@
         "arch": ["x64", "arm64"]
       }
     ],
-    "icon": "public/icon.icns",
+    "icon": "public/icon.png",
     "category": "public.app-category.business"
   },
   "linux": {
