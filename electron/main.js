@@ -192,6 +192,7 @@ function startNextServer() {
       NODE_ENV: 'production',
       HOSTNAME: 'localhost',
       DATABASE_URL: `file:${dbPath}`,
+      ELECTRON_RUN_AS_NODE: '1',
     }
 
     nextProcess = spawn(process.execPath, [serverFile], {
