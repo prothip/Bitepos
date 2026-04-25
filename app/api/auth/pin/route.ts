@@ -42,7 +42,6 @@ export async function POST(request: NextRequest) {
       staffId: matchedStaff.id,
       name: matchedStaff.name,
       role: matchedStaff.role,
-      pin: matchedStaff.id, // Don't put actual PIN in JWT
     })
 
     const cookie = setSessionCookie(token)

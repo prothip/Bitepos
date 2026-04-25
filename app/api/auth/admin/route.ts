@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { createToken, setSessionCookie } from '@/lib/auth'
+import bcrypt from 'bcryptjs'
 
 export async function POST(request: NextRequest) {
   try {
@@ -10,7 +11,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Email and password are required' }, { status: 400 })
     }
 
-    // Find staff by email
+    // Find staff by email (admin or manager only)
     const staff = await prisma.staff.findFirst({
       where: {
         email,
@@ -20,14 +21,23 @@ export async function POST(request: NextRequest) {
     })
 
     if (!staff) {
+      // Use generic error to prevent email enumeration
       return NextResponse.json({ error: 'Invalid credentials' }, { status: 401 })
     }
 
-    // In a real system, use bcrypt to compare password hash
-    // For now, we compare PIN as password for simplicity
-    // TODO: Add proper password hashing in production
-    if (staff.pin !== password && password !== 'admin123') {
+    // Compare password against hashed PIN (bcrypt) or legacy plain PIN
+    const isMatch = staff.pin.startsWith('$2')
+      ? await bcrypt.compare(password, staff.pin)
+      : staff.pin === password
+
+    if (!isMatch) {
       return NextResponse.json({ error: 'Invalid credentials' }, { status: 401 })
+    }
+
+    // Upgrade plain text PIN to bcrypt hash if needed
+    if (!staff.pin.startsWith('$2')) {
+      const hash = await bcrypt.hash(staff.pin, 10)
+      await prisma.staff.update({ where: { id: staff.id }, data: { pin: hash } })
     }
 
     const token = createToken({

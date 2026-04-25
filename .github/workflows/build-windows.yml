@@ -37,6 +37,7 @@ jobs:
         env:
           DATABASE_URL: "file:./dev.db"
           JWT_SECRET: bitepos-prod-build-placeholder
+          NEXT_PUBLIC_LICENSE_SERVER: https://cloud.bitepos.com
 
       - name: Reset & seed production database
         shell: bash

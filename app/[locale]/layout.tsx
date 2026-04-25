@@ -10,6 +10,10 @@ const locales = ['en', 'my', 'zh', 'th']
 export const metadata: Metadata = {
   title: 'BitePOS POS',
   description: 'Point of Sale System for BitePOS Restaurant',
+  icons: {
+    icon: '/favicon.ico',
+    apple: '/icon.png',
+  },
 }
 
 interface RootLayoutProps {

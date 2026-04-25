@@ -100,7 +100,7 @@ export default function LicensePage() {
             type="text"
             value={key}
             onChange={e => setKey(e.target.value)}
-            placeholder="BP-XXXXXX-XXXXXX-XXXXXX-XXXXXX"
+            placeholder="BPOS-XXXXXXXXXXXX"
             className="w-full px-4 py-3 border border-gray-200 rounded-xl text-center font-mono text-sm focus:outline-none focus:ring-2 focus:ring-orange-500"
             onKeyDown={e => e.key === 'Enter' && handleActivate()}
           />

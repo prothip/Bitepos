@@ -9,7 +9,6 @@ export interface StaffSession {
   staffId: string
   name: string
   role: string
-  pin: string
 }
 
 export interface AdminSession {
