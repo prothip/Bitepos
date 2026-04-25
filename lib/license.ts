@@ -1,7 +1,7 @@
 // BitePOS License Client
 // Checks license on startup and heartbeats periodically
 
-const LICENSE_SERVER = process.env.NEXT_PUBLIC_LICENSE_SERVER || 'http://localhost:3500'
+const LICENSE_SERVER = process.env.NEXT_PUBLIC_LICENSE_SERVER || 'https://bitepos-cloud-production.up.railway.app'
 const MACHINE_ID_KEY = 'bitepos_machine_id'
 const LICENSE_TOKEN_KEY = 'bitepos_license_token'
 const LAST_ONLINE_KEY = 'bitepos_last_online'
