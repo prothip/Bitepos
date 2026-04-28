@@ -1,9 +1,20 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { createToken, setSessionCookie } from '@/lib/auth'
+import { checkRateLimit, getClientIp, LOGIN_OPTIONS } from '@/lib/rate-limit'
 import bcrypt from 'bcryptjs'
 
 export async function POST(request: NextRequest) {
+  // Rate limit login attempts
+  const ip = getClientIp(request)
+  const rateCheck = checkRateLimit(`pin-login:${ip}`, LOGIN_OPTIONS)
+  if (!rateCheck.allowed) {
+    return NextResponse.json(
+      { error: 'Too many login attempts. Please try again later.' },
+      { status: 429, headers: { 'Retry-After': String(Math.ceil(rateCheck.retryAfterMs / 1000)) } }
+    )
+  }
+
   try {
     const { pin } = await request.json()
 
