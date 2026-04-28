@@ -253,8 +253,23 @@ function startNextServer() {
     // Wait for server (20 seconds)
     checkServerReady(40, 500).then(ready => {
       if (ready) {
-        dbg('Server ready!')
-        resolve()
+        dbg('Server health check passed!')
+        // Now test the actual page
+        http.get(`http://localhost:${PORT}/en/login`, (res) => {
+          let html = ''
+          res.on('data', chunk => html += chunk)
+          res.on('end', () => {
+            dbg('Login page status: ' + res.statusCode)
+            dbg('Login page HTML length: ' + html.length)
+            dbg('Login page HTML (first 500 chars): ' + html.substring(0, 500))
+            dbg('Has __next div: ' + html.includes('__next'))
+            dbg('Has script tags: ' + html.includes('<script'))
+            resolve()
+          })
+        }).on('error', (e) => {
+          dbg('Error fetching login page: ' + e.message)
+          resolve() // server is up, page might need different handling
+        })
       } else {
         dbg('Server NOT ready after 20s')
         reject(new Error('Server did not respond after 20s\n\nOutput:\n' + serverOutput.slice(-15).join('\n')))
@@ -276,8 +291,23 @@ async function loadApp() {
       loadStatusPage('Starting server...')
       await startNextServer()
       dbg('Loading app URL...')
+      // Try loading the page
       await mainWindow.loadURL(`http://localhost:${PORT}/en/login`)
-      dbg('App loaded!')
+      
+      // After a short delay, check if the page rendered anything
+      setTimeout(async () => {
+        try {
+          const html = await mainWindow.webContents.executeJavaScript('document.body.innerHTML.substring(0, 200)')
+          dbg('Page body after load: ' + html)
+          if (!html || html.length < 10) {
+            dbg('WARNING: Page body is empty! Loading debug info page...')
+            loadStatusPage('Page loaded but body is empty — check debug info', true)
+          }
+        } catch (e) {
+          dbg('Cannot read page body: ' + e.message)
+        }
+      }, 3000)
+      
     } catch (err) {
       dbg('FAILED: ' + err.message)
       loadStatusPage('Server failed to start — see details below', true)
