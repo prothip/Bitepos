@@ -1,12 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { checkApiAuth } from '@/lib/with-auth'
+import { checkApiAuth, checkManagerAuth, checkAdminAuth } from '@/lib/with-auth'
 import { prisma } from '@/lib/prisma'
 import * as XLSX from 'xlsx'
 
 // GET /api/products?action=export → download Excel file
 // POST /api/products?action=import → upload Excel file
 export async function GET(req: NextRequest) {
-  const authErr = checkApiAuth(req || (null as any)); if (authErr) return authErr
+  const authErr = checkApiAuth(req); if (authErr) return authErr
   const action = req.nextUrl.searchParams.get('action')
 
   if (action === 'export') {
@@ -25,7 +25,7 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  const authErr = checkApiAuth(req || (null as any)); if (authErr) return authErr
+  const authErr = checkManagerAuth(req); if (authErr) return authErr
   const action = req.nextUrl.searchParams.get('action')
 
   if (action === 'import') {
@@ -200,7 +200,7 @@ async function handleImport(req: NextRequest): Promise<NextResponse> {
 }
 
 export async function PUT(req: NextRequest) {
-  const authErr = checkApiAuth(req || (null as any)); if (authErr) return authErr
+  const authErr = checkManagerAuth(req); if (authErr) return authErr
   const { searchParams } = new URL(req.url)
   const id = searchParams.get('id')
   if (!id) return NextResponse.json({ error: 'Missing id' }, { status: 400 })
@@ -227,7 +227,7 @@ export async function PUT(req: NextRequest) {
 }
 
 export async function DELETE(req: NextRequest) {
-  const authErr = checkApiAuth(req || (null as any)); if (authErr) return authErr
+  const authErr = checkAdminAuth(req); if (authErr) return authErr
   const { searchParams } = new URL(req.url)
   const id = searchParams.get('id')
   if (!id) return NextResponse.json({ error: 'Missing id' }, { status: 400 })

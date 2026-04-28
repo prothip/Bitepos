@@ -1,11 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { checkApiAuth } from '@/lib/with-auth'
+import { checkApiAuth, checkManagerAuth, checkAdminAuth } from '@/lib/with-auth'
 import { prisma } from '@/lib/prisma'
 import { writeFile, readFile, unlink, copyFile } from 'fs/promises'
 import path from 'path'
 
 export async function GET(req: NextRequest) {
-  const authErr = checkApiAuth(req || (null as any)); if (authErr) return authErr
+  const authErr = checkApiAuth(req)
+  if (authErr) return authErr
   const action = req.nextUrl.searchParams.get('action')
 
   if (action === 'export') {
@@ -29,7 +30,8 @@ export async function GET(req: NextRequest) {
 }
 
 export async function PUT(req: NextRequest) {
-  const authErr = checkApiAuth(req || (null as any)); if (authErr) return authErr
+  const authErr = checkManagerAuth(req)
+  if (authErr) return authErr
   const body = await req.json()
   const updates: Record<string, string> = body
 
@@ -46,7 +48,8 @@ export async function PUT(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  const authErr = checkApiAuth(req || (null as any)); if (authErr) return authErr
+  const authErr = checkAdminAuth(req)
+  if (authErr) return authErr
   const action = req.nextUrl.searchParams.get('action')
 
   if (action === 'import') {

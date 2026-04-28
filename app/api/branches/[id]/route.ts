@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { checkApiAuth } from '@/lib/with-auth'
+import { checkApiAuth, checkManagerAuth, checkAdminAuth } from '@/lib/with-auth'
 import { prisma } from '@/lib/prisma'
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const authErr = checkApiAuth(req); if (authErr) return authErr
+  const authErr = checkApiAuth(req)
+  if (authErr) return authErr
   const { id } = await params
   const branch = await prisma.branch.findUnique({ where: { id } })
   if (!branch) return NextResponse.json({ error: 'Not found' }, { status: 404 })
@@ -11,7 +12,8 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
 }
 
 export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const authErr = checkApiAuth(req); if (authErr) return authErr
+  const authErr = checkManagerAuth(req)
+  if (authErr) return authErr
   const { id } = await params
   const data = await req.json()
   // Prevent deactivating main branch
@@ -29,7 +31,8 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
 }
 
 export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const authErr = checkApiAuth(req); if (authErr) return authErr
+  const authErr = checkAdminAuth(req)
+  if (authErr) return authErr
   const { id } = await params
   const branch = await prisma.branch.findUnique({ where: { id } })
   if (!branch) return NextResponse.json({ error: 'Not found' }, { status: 404 })

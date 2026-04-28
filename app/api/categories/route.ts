@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { checkApiAuth } from '@/lib/with-auth'
+import { checkApiAuth, checkManagerAuth, checkAdminAuth } from '@/lib/with-auth'
 import { prisma } from '@/lib/prisma'
 
 export async function GET(request: NextRequest) {
-  const authErr = checkApiAuth(request || (null as any)); if (authErr) return authErr
+  const authErr = checkApiAuth(request); if (authErr) return authErr
   try {
     const { searchParams } = new URL(request.url)
     const includeInactive = searchParams.get('active') !== 'true'
@@ -19,7 +19,7 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-  const authErr = checkApiAuth(request || (null as any)); if (authErr) return authErr
+  const authErr = checkManagerAuth(request); if (authErr) return authErr
   try {
     const data = await request.json()
     const category = await prisma.category.create({
@@ -41,7 +41,7 @@ export async function POST(request: NextRequest) {
 }
 
 export async function PUT(request: NextRequest) {
-  const authErr = checkApiAuth(request || (null as any)); if (authErr) return authErr
+  const authErr = checkManagerAuth(request); if (authErr) return authErr
   try {
     const { searchParams } = new URL(request.url)
     const id = searchParams.get('id')
@@ -62,7 +62,7 @@ export async function PUT(request: NextRequest) {
 }
 
 export async function DELETE(request: NextRequest) {
-  const authErr = checkApiAuth(request || (null as any)); if (authErr) return authErr
+  const authErr = checkAdminAuth(request); if (authErr) return authErr
   try {
     const { searchParams } = new URL(request.url)
     const id = searchParams.get('id')

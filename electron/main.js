@@ -109,8 +109,7 @@ function createWindow() {
 
   mainWindow.once('ready-to-show', () => {
     mainWindow.show()
-    // DEBUG: always open DevTools
-    mainWindow.webContents.openDevTools()
+    if (isDev) mainWindow.webContents.openDevTools()
   })
 
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {

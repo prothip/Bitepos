@@ -1,7 +1,7 @@
 import { cookies } from 'next/headers'
 import jwt from 'jsonwebtoken'
 
-const JWT_SECRET = process.env.JWT_SECRET || 'bitepos-dev-secret-CHANGE-IN-PROD'
+const JWT_SECRET: string = process.env.JWT_SECRET || (process.env.NODE_ENV === 'production' ? (() => { throw new Error('JWT_SECRET environment variable is required in production. Generate one with: node -e "console.log(require(\"crypto\").randomBytes(32).toString(\"hex\"))"') })() : 'bitepos-dev-secret-CHANGE-IN-PROD')
 const COOKIE_NAME = 'bitepos_session'
 const SESSION_DURATION = 60 * 60 * 8 // 8 hours
 
