@@ -122,14 +122,23 @@ function createWindow() {
   })
 }
 
-function checkServerReady(maxAttempts = 30, intervalMs = 500) {
+function checkServerReady(maxAttempts = 60, intervalMs = 500) {
   return new Promise((resolve) => {
     let attempts = 0
     const check = () => {
       attempts++
-      const req = http.get(`http://localhost:${PORT}/`, (res) => {
-        resolve(true)
-        res.resume() // consume response
+      const req = http.get(`http://localhost:${PORT}/api/health`, (res) => {
+        let data = ''
+        res.on('data', chunk => data += chunk)
+        res.on('end', () => {
+          if (res.statusCode === 200) {
+            resolve(true)
+          } else if (attempts >= maxAttempts) {
+            resolve(false)
+          } else {
+            setTimeout(check, intervalMs)
+          }
+        })
       })
       req.on('error', () => {
         if (attempts >= maxAttempts) {
@@ -138,7 +147,7 @@ function checkServerReady(maxAttempts = 30, intervalMs = 500) {
           setTimeout(check, intervalMs)
         }
       })
-      req.setTimeout(2000, () => {
+      req.setTimeout(3000, () => {
         req.destroy()
         if (attempts >= maxAttempts) {
           resolve(false)
@@ -153,8 +162,6 @@ function checkServerReady(maxAttempts = 30, intervalMs = 500) {
 
 function startNextServer() {
   return new Promise((resolve, reject) => {
-    // Standalone server is inside the ASAR at .next/standalone/
-    // ASAR paths work for reading, but native modules need unpacked paths
     const appPath = app.getAppPath()
     const isAsar = appPath.includes('.asar')
     const standaloneDir = isAsar
@@ -173,7 +180,6 @@ function startNextServer() {
     console.log('=== END DEBUG ===')
 
     if (!fs.existsSync(serverFile)) {
-      // Fallback: try reading from ASAR (fs can read inside asar)
       const asarDir = path.join(appPath, '.next', 'standalone')
       if (fs.existsSync(path.join(asarDir, 'server.js'))) {
         console.log('Found server.js inside ASAR, but need unpacked for native modules')
@@ -184,13 +190,23 @@ function startNextServer() {
       return
     }
 
+    // Build the server environment
     const serverEnv = {
       ...process.env,
       PORT: String(PORT),
       NODE_ENV: 'production',
       HOSTNAME: 'localhost',
       DATABASE_URL: `file:${dbPath}`,
-      ELECTRON_RUN_AS_NODE: '1',
+      // DO NOT set ELECTRON_RUN_AS_NODE — it breaks Next.js server
+      NEXT_PUBLIC_LICENSE_SERVER: process.env.NEXT_PUBLIC_LICENSE_SERVER || 'https://bitepos-cloud-production.up.railway.app',
+    }
+
+    // JWT_SECRET: use env var or generate a stable one per install
+    if (!serverEnv.JWT_SECRET) {
+      // Generate a stable secret from the app path (same every launch)
+      const crypto = require('crypto')
+      serverEnv.JWT_SECRET = crypto.createHash('sha256').update(appPath + '-bitepos-jwt').digest('hex')
+      console.log('Generated stable JWT_SECRET from app path')
     }
 
     nextProcess = spawn(process.execPath, [serverFile], {
@@ -202,13 +218,13 @@ function startNextServer() {
     nextProcess.stdout.on('data', (data) => {
       const output = data.toString()
       serverLogs.push(output)
-      console.log('Next.js:', output)
+      console.log('Next.js:', output.trim())
     })
 
     nextProcess.stderr.on('data', (data) => {
       const output = data.toString()
       serverLogs.push('[STDERR] ' + output)
-      console.error('Next.js Error:', output)
+      console.error('Next.js Error:', output.trim())
     })
 
     nextProcess.on('error', (err) => {
@@ -223,12 +239,12 @@ function startNextServer() {
       }
     })
 
-    // Wait for server to actually respond
-    checkServerReady(40, 500).then(ready => {
+    // Wait for server to respond (up to 30 seconds)
+    checkServerReady(60, 500).then(ready => {
       if (ready) {
         resolve()
       } else {
-        reject(new Error(`Server did not respond after 20s.\n\nServer logs:\n${serverLogs.join('\n')}`))
+        reject(new Error(`Server did not respond after 30s.\n\nServer logs:\n${serverLogs.slice(-20).join('\n')}`))
       }
     })
   })
