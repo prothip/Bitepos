@@ -1,6 +1,5 @@
 import createMiddleware from 'next-intl/middleware'
 import { NextRequest, NextResponse } from 'next/server'
-import crypto from 'crypto'
 
 const intlMiddleware = createMiddleware({
   locales: ['en', 'my', 'zh', 'th'],
@@ -14,22 +13,28 @@ const TRIAL_DAYS = 15
 const COOKIE_SECRET = process.env.JWT_SECRET || 'bitepos-dev-secret-CHANGE-IN-PROD'
 
 /**
- * Sign a cookie value with HMAC (Edge-compatible).
+ * Sign a cookie value with HMAC (Edge-compatible using Web Crypto API).
  */
-function signCookie(value: string): string {
-  const hmac = crypto.createHmac('sha256', COOKIE_SECRET).update(value).digest('hex').slice(0, 16)
-  return `${value}.${hmac}`
+async function signCookie(value: string): Promise<string> {
+  const encoder = new TextEncoder()
+  const key = await crypto.subtle.importKey('raw', encoder.encode(COOKIE_SECRET), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign'])
+  const signature = await crypto.subtle.sign('HMAC', key, encoder.encode(value))
+  const hmacHex = Array.from(new Uint8Array(signature)).map(b => b.toString(16).padStart(2, '0')).join('').slice(0, 16)
+  return `${value}.${hmacHex}`
 }
 
 /**
  * Verify a signed cookie value. Returns original value or null.
  */
-function verifySignedCookie(signed: string): string | null {
+async function verifySignedCookie(signed: string): Promise<string | null> {
   const dotIdx = signed.lastIndexOf('.')
   if (dotIdx === -1) return null
   const value = signed.slice(0, dotIdx)
   const hmac = signed.slice(dotIdx + 1)
-  const expected = crypto.createHmac('sha256', COOKIE_SECRET).update(value).digest('hex').slice(0, 16)
+  const encoder = new TextEncoder()
+  const key = await crypto.subtle.importKey('raw', encoder.encode(COOKIE_SECRET), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign'])
+  const signature = await crypto.subtle.sign('HMAC', key, encoder.encode(value))
+  const expected = Array.from(new Uint8Array(signature)).map(b => b.toString(16).padStart(2, '0')).join('').slice(0, 16)
   if (hmac !== expected) return null
   return value
 }
@@ -49,7 +54,7 @@ function decodeJWTPayload(token: string): { role?: string } | null {
   }
 }
 
-export default function middleware(req: NextRequest) {
+export default async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl
   
   const allowList = ['/license', '/login', '/api/', '/_next/', '/fonts/', '/uploads/']
@@ -70,7 +75,6 @@ export default function middleware(req: NextRequest) {
   // --- Role-based access ---
   const session = decodeJWTPayload(sessionToken)
   if (!session) {
-    // Invalid token — clear cookie and redirect to login
     const res = NextResponse.redirect(new URL(`/${actualLocale}/login`, req.url))
     res.cookies.set('bitepos_session', '', { path: '/', maxAge: 0 })
     return res
@@ -79,12 +83,10 @@ export default function middleware(req: NextRequest) {
   // Admin pages require manager or admin role
   const isAdminPage = pathname.includes('/admin')
   if (isAdminPage && session.role !== 'admin' && session.role !== 'manager') {
-    // Cashier trying to access admin — redirect to POS
     return NextResponse.redirect(new URL(`/${actualLocale}/pos`, req.url))
   }
 
   // --- License check ---
-  // License token cookie: just check existence (real validation is server-side via /api/validate)
   const licenseToken = req.cookies.get('bitepos_license_token')?.value
   if (licenseToken) {
     return intlMiddleware(req)
@@ -95,7 +97,7 @@ export default function middleware(req: NextRequest) {
 
   if (trialStartCookie) {
     const decoded = decodeURIComponent(trialStartCookie)
-    const trialStart = verifySignedCookie(decoded)
+    const trialStart = await verifySignedCookie(decoded)
     if (trialStart) {
       const startDate = new Date(trialStart)
       const daysUsed = Math.floor((Date.now() - startDate.getTime()) / (1000 * 60 * 60 * 24))
@@ -107,10 +109,11 @@ export default function middleware(req: NextRequest) {
     // Tampered/invalid signature — fall through to re-set
   }
 
-  // No valid license or trial cookie — set signed trial cookie and redirect to license page
+  // No valid license or trial cookie — set signed trial cookie
   const now = new Date().toISOString()
+  const signedValue = await signCookie(now)
   const res = NextResponse.redirect(new URL(`/${actualLocale}/license`, req.url))
-  res.cookies.set('bitepos_trial_start', encodeURIComponent(signCookie(now)), {
+  res.cookies.set('bitepos_trial_start', encodeURIComponent(signedValue), {
     path: '/',
     maxAge: 60 * 60 * 24 * 365,
     sameSite: 'lax',
