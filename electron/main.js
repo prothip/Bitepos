@@ -11,6 +11,19 @@ let serverLogs = []
 const isDev = process.env.NODE_ENV !== 'production' || process.env.OPENCLAW_DEV === '1'
 const PORT = process.env.PORT || 3331
 
+// Write logs to a file next to the exe for debugging
+const logFile = path.join(app.getPath('userData'), 'bitepos-debug.log')
+function log(msg) {
+  const line = `[${new Date().toISOString()}] ${msg}\n`
+  console.log(line.trim())
+  try { fs.appendFileSync(logFile, line) } catch {}
+}
+
+log(`BitePOS starting | isDev=${isDev} | version=${app.getVersion()}`)
+log(`userData=${app.getPath('userData')}`)
+log(`exePath=${process.execPath}`)
+log(`appPath=${app.getAppPath()}`)
+
 // --- Auto-updater ---
 let autoUpdater = null
 
@@ -20,7 +33,7 @@ function setupAutoUpdater() {
   try {
     autoUpdater = require('electron-updater').autoUpdater
   } catch {
-    console.log('electron-updater not available, skipping auto-update')
+    log('electron-updater not available, skipping auto-update')
     return
   }
 
@@ -33,21 +46,17 @@ function setupAutoUpdater() {
   })
 
   autoUpdater.on('checking-for-update', () => {
-    console.log('Checking for updates...')
+    log('Checking for updates...')
     sendToWindow('update-status', { status: 'checking' })
   })
 
   autoUpdater.on('update-available', (info) => {
-    console.log('Update available:', info.version)
-    sendToWindow('update-status', { 
-      status: 'available', 
-      version: info.version,
-      releaseNotes: info.releaseNotes || ''
-    })
+    log('Update available: ' + info.version)
+    sendToWindow('update-status', { status: 'available', version: info.version })
   })
 
   autoUpdater.on('update-not-available', () => {
-    console.log('App is up to date')
+    log('App is up to date')
     sendToWindow('update-status', { status: 'up-to-date' })
   })
 
@@ -60,21 +69,18 @@ function setupAutoUpdater() {
   })
 
   autoUpdater.on('update-downloaded', (info) => {
-    console.log('Update downloaded:', info.version)
-    sendToWindow('update-status', { 
-      status: 'downloaded',
-      version: info.version
-    })
+    log('Update downloaded: ' + info.version)
+    sendToWindow('update-status', { status: 'downloaded', version: info.version })
   })
 
   autoUpdater.on('error', (err) => {
-    console.error('Update error:', err.message)
+    log('Update error: ' + err.message)
     sendToWindow('update-status', { status: 'error', error: err.message })
   })
 
   setTimeout(() => {
     autoUpdater.checkForUpdates().catch(err => {
-      console.error('Update check failed:', err.message)
+      log('Update check failed: ' + err.message)
     })
   }, 3000)
 
@@ -88,6 +94,15 @@ function sendToWindow(channel, data) {
     mainWindow.webContents.send(channel, data)
   }
 }
+
+// Loading screen HTML shown while server starts
+const loadingHtml = `<!DOCTYPE html><html><head><meta charset="utf-8">
+<style>
+  body { margin:0; display:flex; align-items:center; justify-content:center; height:100vh; background:#1a1a2e; color:#eee; font-family:system-ui; }
+  .spinner { width:40px; height:40px; border:4px solid #333; border-top:4px solid #e94560; border-radius:50%; animation:spin 1s linear infinite; margin-right:16px; }
+  @keyframes spin { to { transform:rotate(360deg); } }
+  .text { font-size:18px; }
+</style></head><body><div class="spinner"></div><div class="text">Starting BitePOS...</div></body></html>`
 
 function createWindow() {
   mainWindow = new BrowserWindow({
@@ -103,14 +118,16 @@ function createWindow() {
     titleBarStyle: 'hiddenInset',
     title: 'BitePOS POS',
     icon: path.join(__dirname, '../public/icon.png'),
-    backgroundColor: '#f8fafc',
-    show: false,
+    backgroundColor: '#1a1a2e',
+    show: true,
   })
 
-  mainWindow.once('ready-to-show', () => {
-    mainWindow.show()
-    if (isDev) mainWindow.webContents.openDevTools()
-  })
+  // Show loading screen immediately
+  mainWindow.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(loadingHtml))
+
+  if (isDev) {
+    mainWindow.webContents.openDevTools()
+  }
 
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
     shell.openExternal(url)
@@ -128,17 +145,15 @@ function checkServerReady(maxAttempts = 60, intervalMs = 500) {
     const check = () => {
       attempts++
       const req = http.get(`http://localhost:${PORT}/api/health`, (res) => {
-        let data = ''
-        res.on('data', chunk => data += chunk)
-        res.on('end', () => {
-          if (res.statusCode === 200) {
-            resolve(true)
-          } else if (attempts >= maxAttempts) {
-            resolve(false)
-          } else {
-            setTimeout(check, intervalMs)
-          }
-        })
+        if (res.statusCode === 200) {
+          res.resume()
+          resolve(true)
+        } else if (attempts >= maxAttempts) {
+          res.resume()
+          resolve(false)
+        } else {
+          setTimeout(check, intervalMs)
+        }
       })
       req.on('error', () => {
         if (attempts >= maxAttempts) {
@@ -164,30 +179,66 @@ function startNextServer() {
   return new Promise((resolve, reject) => {
     const appPath = app.getAppPath()
     const isAsar = appPath.includes('.asar')
-    const standaloneDir = isAsar
-      ? appPath.replace('.asar', '.asar.unpacked') + '/.next/standalone'
-      : path.join(appPath, '.next', 'standalone')
+
+    // Find standalone directory
+    let standaloneDir
+    if (isAsar) {
+      // ASAR: native modules are unpacked to .asar.unpacked
+      standaloneDir = appPath.replace('.asar', '.asar.unpacked') + '/.next/standalone'
+    } else {
+      standaloneDir = path.join(appPath, '.next', 'standalone')
+    }
+
     const serverFile = path.join(standaloneDir, 'server.js')
     const dbPath = path.join(standaloneDir, 'dev.db')
 
-    console.log('=== BITEPOS DEBUG ===')
-    console.log('appPath:', appPath)
-    console.log('isAsar:', isAsar)
-    console.log('standaloneDir:', standaloneDir)
-    console.log('serverFile:', serverFile)
-    console.log('serverFile exists:', fs.existsSync(serverFile))
-    console.log('dbPath exists:', fs.existsSync(dbPath))
-    console.log('=== END DEBUG ===')
+    log('=== BITEPOS PATHS ===')
+    log('appPath: ' + appPath)
+    log('isAsar: ' + isAsar)
+    log('standaloneDir: ' + standaloneDir)
+    log('serverFile: ' + serverFile)
+    log('serverFile exists: ' + fs.existsSync(serverFile))
+    log('dbPath: ' + dbPath)
+    log('dbPath exists: ' + fs.existsSync(dbPath))
+
+    // List what's actually in the standalone dir
+    try {
+      const entries = fs.readdirSync(standaloneDir)
+      log('standaloneDir contents: ' + entries.join(', '))
+      const nextDir = path.join(standaloneDir, '.next')
+      if (fs.existsSync(nextDir)) {
+        log('.next/ contents: ' + fs.readdirSync(nextDir).join(', '))
+        const staticDir = path.join(nextDir, 'static')
+        if (fs.existsSync(staticDir)) {
+          log('.next/static/ contents: ' + fs.readdirSync(staticDir).join(', '))
+        } else {
+          log('WARNING: .next/static/ NOT FOUND in standalone dir')
+        }
+      } else {
+        log('WARNING: .next/ NOT FOUND in standalone dir')
+      }
+    } catch (e) {
+      log('Error listing standalone dir: ' + e.message)
+    }
+    log('=== END PATHS ===')
 
     if (!fs.existsSync(serverFile)) {
-      const asarDir = path.join(appPath, '.next', 'standalone')
-      if (fs.existsSync(path.join(asarDir, 'server.js'))) {
-        console.log('Found server.js inside ASAR, but need unpacked for native modules')
-        reject(new Error('Server found in ASAR but native modules need unpacked. Check asarUnpack config.'))
+      // Try alternate locations
+      const altPaths = [
+        path.join(appPath, '.next', 'standalone', 'server.js'),
+        path.join(path.dirname(appPath), '.next', 'standalone', 'server.js'),
+      ]
+      for (const alt of altPaths) {
+        log('Trying alternate: ' + alt + ' exists=' + fs.existsSync(alt))
+        if (fs.existsSync(alt)) {
+          standaloneDir = path.dirname(alt)
+          break
+        }
+      }
+      if (!fs.existsSync(path.join(standaloneDir, 'server.js'))) {
+        reject(new Error(`server.js not found. Tried:\n  ${serverFile}\n  ${altPaths.join('\n  ')}`))
         return
       }
-      reject(new Error(`server.js not found at ${serverFile}`))
-      return
     }
 
     // Build the server environment
@@ -197,17 +248,22 @@ function startNextServer() {
       NODE_ENV: 'production',
       HOSTNAME: 'localhost',
       DATABASE_URL: `file:${dbPath}`,
-      // DO NOT set ELECTRON_RUN_AS_NODE — it breaks Next.js server
+      ELECTRON_RUN_AS_NODE: '1',
       NEXT_PUBLIC_LICENSE_SERVER: process.env.NEXT_PUBLIC_LICENSE_SERVER || 'https://bitepos-cloud-production.up.railway.app',
     }
 
     // JWT_SECRET: use env var or generate a stable one per install
     if (!serverEnv.JWT_SECRET) {
-      // Generate a stable secret from the app path (same every launch)
       const crypto = require('crypto')
       serverEnv.JWT_SECRET = crypto.createHash('sha256').update(appPath + '-bitepos-jwt').digest('hex')
-      console.log('Generated stable JWT_SECRET from app path')
+      log('Generated stable JWT_SECRET from app path')
     }
+
+    log('Starting Next.js server...')
+    log('  cwd: ' + standaloneDir)
+    log('  cmd: ' + process.execPath + ' ' + serverFile)
+    log('  PORT: ' + PORT)
+    log('  DATABASE_URL: ' + serverEnv.DATABASE_URL)
 
     nextProcess = spawn(process.execPath, [serverFile], {
       cwd: standaloneDir,
@@ -218,22 +274,22 @@ function startNextServer() {
     nextProcess.stdout.on('data', (data) => {
       const output = data.toString()
       serverLogs.push(output)
-      console.log('Next.js:', output.trim())
+      log('Next.js stdout: ' + output.trim())
     })
 
     nextProcess.stderr.on('data', (data) => {
       const output = data.toString()
       serverLogs.push('[STDERR] ' + output)
-      console.error('Next.js Error:', output.trim())
+      log('Next.js stderr: ' + output.trim())
     })
 
     nextProcess.on('error', (err) => {
-      console.error('Failed to start Next.js:', err)
+      log('Failed to start Next.js: ' + err.message)
       reject(err)
     })
 
     nextProcess.on('exit', (code, signal) => {
-      console.log(`Next.js process exited with code ${code}, signal ${signal}`)
+      log(`Next.js process exited with code=${code} signal=${signal}`)
       if (code !== 0 && code !== null) {
         serverLogs.push(`Process exited with code ${code}`)
       }
@@ -242,9 +298,11 @@ function startNextServer() {
     // Wait for server to respond (up to 30 seconds)
     checkServerReady(60, 500).then(ready => {
       if (ready) {
+        log('Server is ready!')
         resolve()
       } else {
-        reject(new Error(`Server did not respond after 30s.\n\nServer logs:\n${serverLogs.slice(-20).join('\n')}`))
+        log('Server failed to respond after 30s')
+        reject(new Error(`Server did not respond after 30s.\n\nServer logs:\n${serverLogs.slice(-30).join('\n')}`))
       }
     })
   })
@@ -255,20 +313,29 @@ async function loadApp() {
     try {
       await mainWindow.loadURL(`http://localhost:${PORT}/en/login`)
     } catch {
-      console.log('Waiting for Next.js server...')
+      log('Waiting for Next.js server...')
       setTimeout(() => loadApp(), 2000)
     }
   } else {
     try {
       await startNextServer()
+      log('Loading app URL: http://localhost:' + PORT + '/en/login')
       await mainWindow.loadURL(`http://localhost:${PORT}/en/login`)
+      log('App loaded successfully')
     } catch (err) {
-      console.error('Failed to start app:', err)
-      const errorHtml = `<!DOCTYPE html><html><body style="font-family:monospace;padding:40px;background:#1a1a2e;color:#eee">
-        <h1 style="color:#e94560">BitePOS - Server Failed to Start</h1>
-        <pre style="background:#16213e;padding:20px;border-radius:8px;overflow:auto;white-space:pre-wrap">${escapeHtml(err.message)}</pre>
-        <p>Press Ctrl+Shift+I to open DevTools for more details.</p>
-      </body></html>`
+      log('Failed to start app: ' + err.message)
+      const errorHtml = `<!DOCTYPE html><html><head><meta charset="utf-8">
+<style>
+  body { font-family:monospace; padding:40px; background:#1a1a2e; color:#eee; }
+  h1 { color:#e94560; }
+  pre { background:#16213e; padding:20px; border-radius:8px; overflow:auto; white-space:pre-wrap; max-height:60vh; }
+  .log { font-size:12px; color:#aaa; margin-top:20px; }
+</style></head><body>
+  <h1>BitePOS - Server Failed to Start</h1>
+  <pre>${escapeHtml(err.message)}</pre>
+  <p class="log">Debug log: ${escapeHtml(logFile)}</p>
+  <p>Press Ctrl+Shift+I to open DevTools for more details.</p>
+</body></html>`
       mainWindow.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(errorHtml))
     }
   }
