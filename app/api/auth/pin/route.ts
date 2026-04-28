@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { createToken, setSessionCookie } from '@/lib/auth'
 import { checkRateLimit, getClientIp, LOGIN_OPTIONS } from '@/lib/rate-limit'
+import { pinLoginSchema } from '@/lib/schemas'
 import bcrypt from 'bcryptjs'
 
 export async function POST(request: NextRequest) {
@@ -16,11 +17,12 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const { pin } = await request.json()
-
-    if (!pin || typeof pin !== 'string') {
-      return NextResponse.json({ error: 'PIN is required' }, { status: 400 })
+    const body = await request.json()
+    const parsed = pinLoginSchema.safeParse(body)
+    if (!parsed.success) {
+      return NextResponse.json({ error: parsed.error.issues[0].message }, { status: 400 })
     }
+    const { pin } = parsed.data
 
     // Get all active staff and compare PINs with bcrypt
     const staffList = await prisma.staff.findMany({

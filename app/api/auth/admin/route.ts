@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { createToken, setSessionCookie } from '@/lib/auth'
 import { checkRateLimit, getClientIp, LOGIN_OPTIONS } from '@/lib/rate-limit'
+import { adminLoginSchema } from '@/lib/schemas'
 import bcrypt from 'bcryptjs'
 
 export async function POST(request: NextRequest) {
@@ -16,11 +17,12 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const { email, password } = await request.json()
-
-    if (!email || !password) {
-      return NextResponse.json({ error: 'Email and password are required' }, { status: 400 })
+    const body = await request.json()
+    const parsed = adminLoginSchema.safeParse(body)
+    if (!parsed.success) {
+      return NextResponse.json({ error: parsed.error.issues[0].message }, { status: 400 })
     }
+    const { email, password } = parsed.data
 
     // Find staff by email (admin or manager only)
     const staff = await prisma.staff.findFirst({

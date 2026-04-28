@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { checkApiAuth, checkManagerAuth, checkAdminAuth } from '@/lib/with-auth'
 import { prisma } from '@/lib/prisma'
+import { staffCreateSchema } from '@/lib/schemas'
 import bcrypt from 'bcryptjs'
 
 export async function GET(request: NextRequest) {
@@ -24,7 +25,12 @@ export async function POST(request: NextRequest) {
   const authErr = checkManagerAuth(request)
   if (authErr) return authErr
   try {
-    const data = await request.json()
+    const body = await request.json()
+    const parsed = staffCreateSchema.safeParse(body)
+    if (!parsed.success) {
+      return NextResponse.json({ error: parsed.error.issues[0].message }, { status: 400 })
+    }
+    const data = parsed.data
     const staff = await prisma.staff.create({
       data: {
         name: data.name,
