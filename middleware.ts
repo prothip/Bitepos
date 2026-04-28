@@ -1,5 +1,6 @@
 import createMiddleware from 'next-intl/middleware'
 import { NextRequest, NextResponse } from 'next/server'
+import crypto from 'crypto'
 
 const intlMiddleware = createMiddleware({
   locales: ['en', 'my', 'zh', 'th'],
@@ -8,6 +9,30 @@ const intlMiddleware = createMiddleware({
 })
 
 const TRIAL_DAYS = 15
+
+// HMAC key for signed cookies (matches JWT_SECRET from auth.ts)
+const COOKIE_SECRET = process.env.JWT_SECRET || 'bitepos-dev-secret-CHANGE-IN-PROD'
+
+/**
+ * Sign a cookie value with HMAC (Edge-compatible).
+ */
+function signCookie(value: string): string {
+  const hmac = crypto.createHmac('sha256', COOKIE_SECRET).update(value).digest('hex').slice(0, 16)
+  return `${value}.${hmac}`
+}
+
+/**
+ * Verify a signed cookie value. Returns original value or null.
+ */
+function verifySignedCookie(signed: string): string | null {
+  const dotIdx = signed.lastIndexOf('.')
+  if (dotIdx === -1) return null
+  const value = signed.slice(0, dotIdx)
+  const hmac = signed.slice(dotIdx + 1)
+  const expected = crypto.createHmac('sha256', COOKIE_SECRET).update(value).digest('hex').slice(0, 16)
+  if (hmac !== expected) return null
+  return value
+}
 
 /**
  * Decode JWT payload without verification (Edge-compatible).
@@ -58,26 +83,34 @@ export default function middleware(req: NextRequest) {
     return NextResponse.redirect(new URL(`/${actualLocale}/pos`, req.url))
   }
 
-  // --- License check (cookie-based for middleware, DB is source of truth for UI) ---
+  // --- License check ---
+  // License token cookie: just check existence (real validation is server-side via /api/validate)
   const licenseToken = req.cookies.get('bitepos_license_token')?.value
-  const trialStart = req.cookies.get('bitepos_trial_start')?.value
-
   if (licenseToken) {
     return intlMiddleware(req)
   }
 
-  if (trialStart) {
-    const startDate = new Date(decodeURIComponent(trialStart))
-    const daysUsed = Math.floor((Date.now() - startDate.getTime()) / (1000 * 60 * 60 * 24))
-    if (daysUsed < TRIAL_DAYS) {
-      return intlMiddleware(req)
+  // Trial cookie: must be signed to prevent tampering
+  const trialStartCookie = req.cookies.get('bitepos_trial_start')?.value
+
+  if (trialStartCookie) {
+    const decoded = decodeURIComponent(trialStartCookie)
+    const trialStart = verifySignedCookie(decoded)
+    if (trialStart) {
+      const startDate = new Date(trialStart)
+      const daysUsed = Math.floor((Date.now() - startDate.getTime()) / (1000 * 60 * 60 * 24))
+      if (daysUsed < TRIAL_DAYS) {
+        return intlMiddleware(req)
+      }
+      return NextResponse.redirect(new URL(`/${actualLocale}/license?trial=expired`, req.url))
     }
-    return NextResponse.redirect(new URL(`/${actualLocale}/license?trial=expired`, req.url))
+    // Tampered/invalid signature — fall through to re-set
   }
 
-  // No license or trial cookie — set trial cookie and redirect to license page
+  // No valid license or trial cookie — set signed trial cookie and redirect to license page
+  const now = new Date().toISOString()
   const res = NextResponse.redirect(new URL(`/${actualLocale}/license`, req.url))
-  res.cookies.set('bitepos_trial_start', new Date().toISOString(), {
+  res.cookies.set('bitepos_trial_start', encodeURIComponent(signCookie(now)), {
     path: '/',
     maxAge: 60 * 60 * 24 * 365,
     sameSite: 'lax',

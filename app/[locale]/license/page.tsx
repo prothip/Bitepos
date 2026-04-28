@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { activateLicense, clearLicense } from '@/lib/license'
+import { activateLicense, clearLicense, getLicenseToken } from '@/lib/license'
 
 export default function LicensePage() {
   const [key, setKey] = useState('')
@@ -22,13 +22,21 @@ export default function LicensePage() {
         return acc
       }, {} as Record<string, string>)
       
-      const trialStart = cookies['bitepos_trial_start']
-      if (trialStart) {
-        const startDate = new Date(trialStart)
-        const now = new Date()
-        const daysUsed = Math.floor((now.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24))
-        const daysLeft = 15 - daysUsed
-        setTrialInfo({ daysLeft: Math.max(0, daysLeft), expired: daysLeft <= 0 })
+      const trialStartCookie = cookies['bitepos_trial_start']
+      if (trialStartCookie) {
+        // Cookie is now signed (value.hmac) — extract the date portion before the last dot
+        const decoded = decodeURIComponent(trialStartCookie)
+        const dotIdx = decoded.lastIndexOf('.')
+        const trialDateStr = dotIdx > -1 ? decoded.slice(0, dotIdx) : decoded
+        try {
+          const startDate = new Date(trialDateStr)
+          if (!isNaN(startDate.getTime())) {
+            const now = new Date()
+            const daysUsed = Math.floor((now.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24))
+            const daysLeft = 15 - daysUsed
+            setTrialInfo({ daysLeft: Math.max(0, daysLeft), expired: daysLeft <= 0 })
+          }
+        } catch {}
       }
     }
   }, [])
@@ -46,6 +54,12 @@ export default function LicensePage() {
     })
     setLoading(false)
     if (state.valid) {
+      // Set signed license cookie for middleware
+      const token = getLicenseToken()
+      if (token) {
+        // The server token is already signed (key:device:hmac), sign it again for the cookie
+        document.cookie = `bitepos_license_token=${encodeURIComponent(token)}; path=/; max-age=${60 * 60 * 24 * 30}; sameSite=lax`
+      }
       setTimeout(() => window.location.href = '/', 1500)
     }
   }

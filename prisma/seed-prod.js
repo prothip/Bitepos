@@ -10,8 +10,8 @@ db.pragma('journal_mode = WAL')
 console.log('Setting up fresh database for production...')
 
 // Hash default PINs with bcrypt
-const adminPinHash = bcrypt.hashSync('1234', 10)
-const managerPinHash = bcrypt.hashSync('5678', 10)
+const adminPinHash = bcrypt.hashSync('admin2024', 10)
+const managerPinHash = bcrypt.hashSync('mgr2024', 10)
 
 // Create main branch (INSERT OR IGNORE for idempotency)
 db.prepare(`
@@ -54,6 +54,6 @@ for (const [id, key, value] of settings) {
 db.close()
 
 console.log('✅ Production database ready!')
-console.log('   Admin PIN: 1234')
-console.log('   Manager PIN: 5678')
-console.log('   → Change these PINs after first login!')
+console.log('   Admin PIN: admin2024')
+console.log('   Manager PIN: mgr2024')
+console.log('   ⚠️  Change these PINs after first login!')

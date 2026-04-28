@@ -1,9 +1,36 @@
+import crypto from 'crypto'
 import { cookies } from 'next/headers'
 import jwt from 'jsonwebtoken'
 
 const JWT_SECRET: string = process.env.JWT_SECRET || (process.env.NODE_ENV === 'production' ? (() => { throw new Error('JWT_SECRET environment variable is required in production. Generate one with: node -e "console.log(require(\"crypto\").randomBytes(32).toString(\"hex\"))"') })() : 'bitepos-dev-secret-CHANGE-IN-PROD')
 const COOKIE_NAME = 'bitepos_session'
 const SESSION_DURATION = 60 * 60 * 8 // 8 hours
+
+// --- Trial/License cookie signing ---
+
+/**
+ * Sign a cookie value with HMAC to prevent tampering.
+ * Format: value.hmac
+ */
+export function signCookieValue(value: string): string {
+  const hmac = crypto.createHmac('sha256', JWT_SECRET).update(value).digest('hex').slice(0, 16)
+  return `${value}.${hmac}`
+}
+
+/**
+ * Verify a signed cookie value. Returns the original value or null if tampered.
+ */
+export function verifyCookieValue(signed: string): string | null {
+  const dotIdx = signed.lastIndexOf('.')
+  if (dotIdx === -1) return null
+  const value = signed.slice(0, dotIdx)
+  const hmac = signed.slice(dotIdx + 1)
+  const expected = crypto.createHmac('sha256', JWT_SECRET).update(value).digest('hex').slice(0, 16)
+  if (hmac !== expected) return null
+  return value
+}
+
+// --- Session types ---
 
 export interface StaffSession {
   staffId: string

@@ -60,6 +60,20 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: 'No database file provided' }, { status: 400 })
       }
 
+      const buffer = Buffer.from(await file.arrayBuffer())
+
+      // Validate SQLite header (first 16 bytes: "SQLite format 3\000")
+      const SQLITE_HEADER = Buffer.from('SQLite format 3\0')
+      if (buffer.length < 16 || !buffer.subarray(0, 16).equals(SQLITE_HEADER)) {
+        return NextResponse.json({ error: 'Invalid SQLite database file' }, { status: 400 })
+      }
+
+      // Validate file size (max 100MB)
+      const MAX_DB_SIZE = 100 * 1024 * 1024
+      if (buffer.length > MAX_DB_SIZE) {
+        return NextResponse.json({ error: 'Database file too large (max 100MB)' }, { status: 400 })
+      }
+
       const dbPath = path.join(process.cwd(), 'dev.db')
       const backupPath = path.join(process.cwd(), 'dev.db.backup')
 
@@ -67,7 +81,6 @@ export async function POST(req: NextRequest) {
       try { await copyFile(dbPath, backupPath) } catch {}
 
       // Write new database
-      const buffer = Buffer.from(await file.arrayBuffer())
       await writeFile(dbPath, buffer)
 
       return NextResponse.json({ success: true, message: 'Database imported successfully' })
