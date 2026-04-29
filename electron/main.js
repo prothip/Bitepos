@@ -1,8 +1,9 @@
 const { app, BrowserWindow, ipcMain, Menu, shell, dialog } = require('electron')
 const path = require('path')
-const { spawn } = require('child_process')
+const { spawn, execSync } = require('child_process')
 const http = require('http')
 const fs = require('fs')
+const os = require('os')
 
 let mainWindow
 let nextProcess
@@ -10,28 +11,49 @@ let nextProcess
 const isDev = process.env.NODE_ENV !== 'production' || process.env.OPENCLAW_DEV === '1'
 const PORT = process.env.PORT || 3331
 
-// Debug info collected during startup — shown on screen if something goes wrong
+// Debug logging — write to multiple locations so we can always find it
 const debugInfo = []
+let logPath = null
+
+// Determine log path immediately — before app is ready
+try {
+  // On Windows: C:\Users\<user>\AppData\Roaming\bitepos-pos
+  const appDataDir = path.join(process.env.APPDATA || path.join(os.homedir(), 'AppData', 'Roaming'), 'bitepos-pos')
+  if (!fs.existsSync(appDataDir)) fs.mkdirSync(appDataDir, { recursive: true })
+  logPath = path.join(appDataDir, 'bitepos-debug.log')
+} catch (e) {
+  // Fallback: next to the exe
+  logPath = path.join(path.dirname(process.execPath), 'bitepos-debug.log')
+}
+
 function dbg(msg) {
   const line = `[${new Date().toISOString()}] ${msg}`
   debugInfo.push(line)
   console.log(line)
   try {
-    const logDir = app.getPath('userData')
-    fs.appendFileSync(path.join(logDir, 'bitepos-debug.log'), line + '\n')
+    fs.appendFileSync(logPath, line + '\n')
   } catch (e) {
-    console.error('Cannot write log:', e.message)
+    // Can't write to our fallback either — very broken
+    try {
+      // Last resort: temp dir
+      const tmpLog = path.join(os.tmpdir(), 'bitepos-debug.log')
+      fs.appendFileSync(tmpLog, line + '\n')
+    } catch (e2) {
+      console.error('Cannot write log anywhere:', e.message)
+    }
   }
 }
 
 try {
   dbg(`BitePOS starting | isDev=${isDev} | version=${app.getVersion()}`)
+  dbg(`Log file: ${logPath}`)
   dbg(`userData=${app.getPath('userData')}`)
   dbg(`exePath=${process.execPath}`)
   dbg(`appPath=${app.getAppPath()}`)
   dbg(`platform=${process.platform} arch=${process.arch}`)
 } catch (e) {
   console.error('Startup error:', e)
+  try { fs.appendFileSync(logPath, 'FATAL STARTUP ERROR: ' + e.message + '\n' + e.stack) } catch {}
 }
 
 // --- Auto-updater ---
@@ -186,7 +208,10 @@ function startNextServer() {
     }
 
     if (!fs.existsSync(serverFile)) {
-      reject(new Error('server.js NOT FOUND at: ' + serverFile + '\n\nApp path: ' + appPath))
+      const msg = 'server.js NOT FOUND at: ' + serverFile + '\n\nApp path: ' + appPath
+      dbg('FATAL: ' + msg)
+      try { dialog.showErrorBox('BitePOS - Server Not Found', msg + '\n\nLog: ' + logPath) } catch {}
+      reject(new Error(msg))
       return
     }
 
@@ -219,22 +244,12 @@ function startNextServer() {
 
     loadStatusPage('Starting server...')
 
-    // On Windows in a packaged app, process.execPath is the app exe itself
-    // which may not work with ELECTRON_RUN_AS_NODE for spawning Node scripts.
-    // Try to find a real node.exe first, fall back to process.execPath.
+    // On Windows in a packaged app, process.execPath is the app exe itself.
+    // ELECTRON_RUN_AS_NODE=1 should make it act like Node.js.
+    // As a fallback, also try to find node.exe on the system.
     let nodePath = process.execPath
-    if (process.platform === 'win32') {
-      // Check if node is available on PATH
-      try {
-        const which = require('child_process').execSync('where node 2>nul', { encoding: 'utf8' }).trim()
-        if (which) {
-          nodePath = which.split('\n')[0].trim()
-          dbg('Found system node: ' + nodePath)
-        }
-      } catch {
-        dbg('System node not found, using process.execPath')
-      }
-    }
+    dbg('Using node path: ' + nodePath)
+    dbg('ELECTRON_RUN_AS_NODE will be set in env')
 
     nextProcess = spawn(nodePath, [serverFile], {
       cwd: standaloneDir,
@@ -257,15 +272,20 @@ function startNextServer() {
 
     nextProcess.on('error', (err) => {
       dbg('Server spawn error: ' + err.message)
+      try { dialog.showErrorBox('BitePOS - Server Error', 'Failed to start server: ' + err.message + '\n\nLog: ' + logPath) } catch {}
       reject(err)
     })
 
     let serverExited = false
     nextProcess.on('exit', (code, signal) => {
       serverExited = true
-      dbg(`Server exited: code=${code} signal=${signal}`)
+      const exitMsg = `Server exited: code=${code} signal=${signal}`
+      dbg(exitMsg)
       if (code !== 0 && code !== null) {
-        reject(new Error('Server crashed with code ' + code + '\n\nOutput:\n' + serverOutput.slice(-10).join('\n')))
+        const errOutput = serverOutput.slice(-10).join('\n')
+        dbg('Server crash output: ' + errOutput)
+        try { dialog.showErrorBox('BitePOS - Server Crashed', exitMsg + '\n\n' + errOutput + '\n\nLog: ' + logPath) } catch {}
+        reject(new Error('Server crashed with code ' + code + '\n\nOutput:\n' + errOutput))
       }
     })
 
@@ -343,6 +363,8 @@ async function loadApp() {
       
     } catch (err) {
       dbg('FAILED: ' + err.message)
+      dbg('Stack: ' + err.stack)
+      try { dialog.showErrorBox('BitePOS - Startup Failed', err.message + '\n\nLog file: ' + logPath) } catch {}
       loadStatusPage('Server failed to start — see details below', true)
     }
   }
@@ -383,6 +405,18 @@ app.whenReady().then(async () => {
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) { createWindow(); loadApp() }
   })
+})
+
+process.on('uncaughtException', (err) => {
+  console.error('Uncaught exception:', err)
+  try {
+    fs.appendFileSync(logPath || path.join(os.tmpdir(), 'bitepos-debug.log'), `[FATAL] ${err.message}\n${err.stack}\n`)
+  } catch {}
+  try {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      dialog.showErrorBox('BitePOS - Unexpected Error', err.message + '\n\nLog: ' + (logPath || 'unknown'))
+    }
+  } catch {}
 })
 
 app.on('window-all-closed', () => {
