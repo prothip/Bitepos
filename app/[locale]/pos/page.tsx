@@ -290,6 +290,7 @@ export default function POSPage() {
         type: orderType,
         branchId: activeBranch?.id || undefined,
         tableId: selectedTable,
+        status: 'completed',
         items: cart.map((item) => ({
           productId: item.product.id,
           quantity: item.quantity,
