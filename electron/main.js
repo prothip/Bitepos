@@ -1,6 +1,6 @@
 const { app, BrowserWindow, ipcMain, Menu, shell, dialog } = require('electron')
 const path = require('path')
-const { spawn, execSync } = require('child_process')
+const { spawn } = require('child_process')
 const http = require('http')
 const fs = require('fs')
 const os = require('os')
@@ -17,7 +17,6 @@ let logPath = null
 
 // Determine log path immediately — before app is ready
 try {
-  // On Windows: C:\Users\<user>\AppData\Roaming\bitepos-pos
   const appDataDir = path.join(process.env.APPDATA || path.join(os.homedir(), 'AppData', 'Roaming'), 'bitepos-pos')
   if (!fs.existsSync(appDataDir)) fs.mkdirSync(appDataDir, { recursive: true })
   logPath = path.join(appDataDir, 'bitepos-debug.log')
@@ -33,9 +32,7 @@ function dbg(msg) {
   try {
     fs.appendFileSync(logPath, line + '\n')
   } catch (e) {
-    // Can't write to our fallback either — very broken
     try {
-      // Last resort: temp dir
       const tmpLog = path.join(os.tmpdir(), 'bitepos-debug.log')
       fs.appendFileSync(tmpLog, line + '\n')
     } catch (e2) {
@@ -96,7 +93,6 @@ function createWindow() {
     show: true,
   })
 
-  // Show a status page immediately — we'll update it from IPC
   loadStatusPage('Starting BitePOS...')
 
   if (isDev) mainWindow.webContents.openDevTools()
@@ -127,7 +123,7 @@ function loadStatusPage(message, isError = false) {
   mainWindow.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(html))
 }
 
-function checkServerReady(maxAttempts = 40, intervalMs = 500) {
+function checkServerReady(maxAttempts, intervalMs) {
   return new Promise((resolve) => {
     let attempts = 0
     const check = () => {
@@ -156,49 +152,108 @@ function checkServerReady(maxAttempts = 40, intervalMs = 500) {
   })
 }
 
+function findStandaloneDir() {
+  const appPath = app.getAppPath()
+  const isAsar = appPath.includes('.asar')
+
+  dbg('--- FINDING STANDALONE DIR ---')
+  dbg('appPath: ' + appPath)
+  dbg('isAsar: ' + isAsar)
+  dbg('process.resourcesPath: ' + process.resourcesPath)
+  dbg('process.execPath: ' + process.execPath)
+
+  // List candidate paths and check each one
+  const candidates = []
+
+  if (isAsar) {
+    // When asarUnpack is used, Electron creates app.asar.unpacked alongside app.asar
+    // The .asar.unpacked directory mirrors the structure for files that were unpacked
+    const unpackedBase = appPath.replace(/\.asar.*/, '.asar.unpacked')
+    candidates.push(path.join(unpackedBase, '.next', 'standalone'))
+
+    // Also try via resourcesPath
+    const resDir = process.resourcesPath
+    candidates.push(path.join(resDir, 'app.asar.unpacked', '.next', 'standalone'))
+
+    // Try relative to exe (Windows NSIS installs to Program Files)
+    const exeDir = path.dirname(process.execPath)
+    candidates.push(path.join(exeDir, 'resources', 'app.asar.unpacked', '.next', 'standalone'))
+
+    // Some electron-builder versions use different structure
+    candidates.push(path.join(resDir, 'app', '.next', 'standalone'))
+  } else {
+    candidates.push(path.join(appPath, '.next', 'standalone'))
+  }
+
+  for (const c of candidates) {
+    const exists = fs.existsSync(c)
+    dbg('  candidate: ' + c + ' -> ' + (exists ? 'EXISTS' : 'not found'))
+    if (exists) return c
+  }
+
+  // If none found, search the resources directory tree
+  dbg('No candidate found, searching resources...')
+  try {
+    const resDir = process.resourcesPath
+    if (fs.existsSync(resDir)) {
+      dbg('resourcesPath contents: ' + fs.readdirSync(resDir).join(', '))
+      const unpacked = path.join(resDir, 'app.asar.unpacked')
+      if (fs.existsSync(unpacked)) {
+        dbg('app.asar.unpacked contents: ' + fs.readdirSync(unpacked).join(', '))
+        const standaloneCheck = path.join(unpacked, '.next', 'standalone')
+        if (fs.existsSync(standaloneCheck)) return standaloneCheck
+        // Maybe standalone is deeper
+        try {
+          const nextCheck = path.join(unpacked, '.next')
+          if (fs.existsSync(nextCheck)) {
+            dbg('.next in unpacked contents: ' + fs.readdirSync(nextCheck).join(', '))
+          }
+        } catch {}
+      }
+      // Check plain app directory (no asar)
+      const appDir = path.join(resDir, 'app')
+      if (fs.existsSync(appDir)) {
+        dbg('app dir contents: ' + fs.readdirSync(appDir).join(', '))
+        const standaloneCheck = path.join(appDir, '.next', 'standalone')
+        if (fs.existsSync(standaloneCheck)) return standaloneCheck
+      }
+    }
+  } catch (e) {
+    dbg('Error searching resources: ' + e.message)
+  }
+
+  return null
+}
+
 function startNextServer() {
   return new Promise((resolve, reject) => {
-    const appPath = app.getAppPath()
-    const isAsar = appPath.includes('.asar')
+    const standaloneDir = findStandaloneDir()
 
-    let standaloneDir
-    if (isAsar) {
-      standaloneDir = appPath.replace('.asar', '.asar.unpacked') + '/.next/standalone'
-    } else {
-      standaloneDir = path.join(appPath, '.next', 'standalone')
+    if (!standaloneDir) {
+      const msg = 'Cannot find .next/standalone directory!\n\nappPath: ' + app.getAppPath() + '\nresourcesPath: ' + process.resourcesPath + '\n\nLog: ' + logPath
+      dbg('FATAL: ' + msg)
+      try { dialog.showErrorBox('BitePOS - Server Not Found', msg) } catch {}
+      reject(new Error(msg))
+      return
     }
 
     const serverFile = path.join(standaloneDir, 'server.js')
     const dbPath = path.join(standaloneDir, 'dev.db')
 
-    dbg('--- PATHS ---')
-    dbg('appPath: ' + appPath)
-    dbg('isAsar: ' + isAsar)
-    dbg('standaloneDir: ' + standaloneDir)
-    dbg('serverFile: ' + serverFile)
+    dbg('Using standaloneDir: ' + standaloneDir)
     dbg('serverFile exists: ' + fs.existsSync(serverFile))
-    dbg('dbPath: ' + dbPath)
     dbg('dbPath exists: ' + fs.existsSync(dbPath))
 
-    // List what's actually in the standalone dir
+    // Verify .next/static exists (blank page cause)
+    const staticDir = path.join(standaloneDir, '.next', 'static')
+    dbg('.next/static exists: ' + fs.existsSync(staticDir))
+    if (fs.existsSync(staticDir)) {
+      try { dbg('.next/static contents: ' + fs.readdirSync(staticDir).join(', ')) } catch {}
+    }
+
+    // List standalone dir contents
     try {
-      if (fs.existsSync(standaloneDir)) {
-        dbg('standaloneDir contents: ' + fs.readdirSync(standaloneDir).join(', '))
-      } else {
-        dbg('standaloneDir DOES NOT EXIST')
-        // Try to find it
-        const resourcesDir = path.join(process.resourcesPath, 'app')
-        dbg('Trying resourcesDir: ' + resourcesDir + ' exists=' + fs.existsSync(resourcesDir))
-        if (fs.existsSync(resourcesDir)) {
-          dbg('resourcesDir contents: ' + fs.readdirSync(resourcesDir).join(', '))
-        }
-        // Try the parent directory
-        const parentDir = path.dirname(appPath)
-        dbg('Parent dir: ' + parentDir)
-        if (fs.existsSync(parentDir)) {
-          dbg('Parent contents: ' + fs.readdirSync(parentDir).join(', '))
-        }
-      }
+      dbg('standaloneDir contents: ' + fs.readdirSync(standaloneDir).join(', '))
       const nextDir = path.join(standaloneDir, '.next')
       if (fs.existsSync(nextDir)) {
         dbg('.next/ contents: ' + fs.readdirSync(nextDir).join(', '))
@@ -208,7 +263,7 @@ function startNextServer() {
     }
 
     if (!fs.existsSync(serverFile)) {
-      const msg = 'server.js NOT FOUND at: ' + serverFile + '\n\nApp path: ' + appPath
+      const msg = 'server.js NOT FOUND at: ' + serverFile + '\n\nApp path: ' + app.getAppPath()
       dbg('FATAL: ' + msg)
       try { dialog.showErrorBox('BitePOS - Server Not Found', msg + '\n\nLog: ' + logPath) } catch {}
       reject(new Error(msg))
@@ -230,7 +285,7 @@ function startNextServer() {
     if (!serverEnv.JWT_SECRET) {
       try {
         const crypto = require('crypto')
-        serverEnv.JWT_SECRET = crypto.createHash('sha256').update(appPath + '-bitepos-jwt').digest('hex')
+        serverEnv.JWT_SECRET = crypto.createHash('sha256').update(standaloneDir + '-bitepos-jwt').digest('hex')
         dbg('Generated JWT_SECRET')
       } catch (e) {
         dbg('Cannot generate JWT_SECRET: ' + e.message)
@@ -238,20 +293,14 @@ function startNextServer() {
     }
 
     dbg('Starting server...')
-    dbg('  cmd: ' + process.execPath)
+    dbg('  execPath: ' + process.execPath)
     dbg('  cwd: ' + standaloneDir)
     dbg('  PORT: ' + PORT)
 
     loadStatusPage('Starting server...')
 
-    // On Windows in a packaged app, process.execPath is the app exe itself.
-    // ELECTRON_RUN_AS_NODE=1 should make it act like Node.js.
-    // As a fallback, also try to find node.exe on the system.
-    let nodePath = process.execPath
-    dbg('Using node path: ' + nodePath)
-    dbg('ELECTRON_RUN_AS_NODE will be set in env')
-
-    nextProcess = spawn(nodePath, [serverFile], {
+    // process.execPath with ELECTRON_RUN_AS_NODE=1 spawns Node.js from the Electron binary
+    nextProcess = spawn(process.execPath, [serverFile], {
       cwd: standaloneDir,
       env: serverEnv,
       stdio: ['pipe', 'pipe', 'pipe'],
@@ -289,34 +338,19 @@ function startNextServer() {
       }
     })
 
-    // Wait for server (30 seconds — first run can be slow on Windows)
+    // Wait for server (30 seconds)
     checkServerReady(60, 500).then(ready => {
       if (ready) {
         dbg('Server health check passed!')
-        // Now test the actual page
-        http.get(`http://localhost:${PORT}/en/login`, (res) => {
-          let html = ''
-          res.on('data', chunk => html += chunk)
-          res.on('end', () => {
-            dbg('Login page status: ' + res.statusCode)
-            dbg('Login page HTML length: ' + html.length)
-            dbg('Login page HTML (first 500 chars): ' + html.substring(0, 500))
-            dbg('Has __next div: ' + html.includes('__next'))
-            dbg('Has script tags: ' + html.includes('<script'))
-            resolve()
-          })
-        }).on('error', (e) => {
-          dbg('Error fetching login page: ' + e.message)
-          resolve() // server is up, page might need different handling
-        })
+        resolve()
       } else {
         dbg('Server NOT ready after 30s (exited=' + serverExited + ')')
+        const errOutput = serverOutput.slice(-15).join('\n')
         if (serverExited) {
-          reject(new Error('Server crashed during startup\n\nOutput:\n' + serverOutput.slice(-15).join('\n')))
+          reject(new Error('Server crashed during startup\n\nOutput:\n' + errOutput))
         } else {
-          // Server process is alive but not responding — kill it and report
           nextProcess.kill()
-          reject(new Error('Server did not respond after 30s (process still running)\n\nOutput:\n' + serverOutput.slice(-15).join('\n')))
+          reject(new Error('Server did not respond after 30s\n\nOutput:\n' + errOutput))
         }
       }
     })
@@ -336,9 +370,8 @@ async function loadApp() {
       loadStatusPage('Starting server...')
       await startNextServer()
       dbg('Loading app URL...')
-      // Try loading the page
       await mainWindow.loadURL(`http://localhost:${PORT}/en/login`)
-      
+
       // Watch for server crashes after initial load
       if (nextProcess) {
         nextProcess.on('exit', (code, signal) => {
@@ -346,21 +379,21 @@ async function loadApp() {
           loadStatusPage(`Server crashed (code ${code}). Restart the app.`, true)
         })
       }
-      
+
       // After a short delay, check if the page rendered anything
       setTimeout(async () => {
         try {
           const html = await mainWindow.webContents.executeJavaScript('document.body.innerHTML.substring(0, 200)')
           dbg('Page body after load: ' + html)
           if (!html || html.length < 10) {
-            dbg('WARNING: Page body is empty! Loading debug info page...')
+            dbg('WARNING: Page body is empty!')
             loadStatusPage('Page loaded but body is empty — check debug info', true)
           }
         } catch (e) {
           dbg('Cannot read page body: ' + e.message)
         }
       }, 3000)
-      
+
     } catch (err) {
       dbg('FAILED: ' + err.message)
       dbg('Stack: ' + err.stack)
@@ -373,6 +406,18 @@ async function loadApp() {
 function escapeHtml(str) {
   return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
 }
+
+process.on('uncaughtException', (err) => {
+  console.error('Uncaught exception:', err)
+  try {
+    fs.appendFileSync(logPath || path.join(os.tmpdir(), 'bitepos-debug.log'), `[FATAL] ${err.message}\n${err.stack}\n`)
+  } catch {}
+  try {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      dialog.showErrorBox('BitePOS - Unexpected Error', err.message + '\n\nLog: ' + (logPath || 'unknown'))
+    }
+  } catch {}
+})
 
 app.whenReady().then(async () => {
   createWindow()
@@ -405,18 +450,6 @@ app.whenReady().then(async () => {
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) { createWindow(); loadApp() }
   })
-})
-
-process.on('uncaughtException', (err) => {
-  console.error('Uncaught exception:', err)
-  try {
-    fs.appendFileSync(logPath || path.join(os.tmpdir(), 'bitepos-debug.log'), `[FATAL] ${err.message}\n${err.stack}\n`)
-  } catch {}
-  try {
-    if (mainWindow && !mainWindow.isDestroyed()) {
-      dialog.showErrorBox('BitePOS - Unexpected Error', err.message + '\n\nLog: ' + (logPath || 'unknown'))
-    }
-  } catch {}
 })
 
 app.on('window-all-closed', () => {
