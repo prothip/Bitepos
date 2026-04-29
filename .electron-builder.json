@@ -20,8 +20,7 @@
     "!node_modules/@electric-sql/**"
   ],
   "asarUnpack": [
-    ".next/standalone/node_modules/**/*.node",
-    ".next/standalone/node_modules/**/package.json",
+    ".next/standalone/**/*",
     "node_modules/better-sqlite3/**/*",
     "node_modules/@prisma/**/*",
     "node_modules/.prisma/**/*",

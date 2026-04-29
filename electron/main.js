@@ -219,7 +219,24 @@ function startNextServer() {
 
     loadStatusPage('Starting server...')
 
-    nextProcess = spawn(process.execPath, [serverFile], {
+    // On Windows in a packaged app, process.execPath is the app exe itself
+    // which may not work with ELECTRON_RUN_AS_NODE for spawning Node scripts.
+    // Try to find a real node.exe first, fall back to process.execPath.
+    let nodePath = process.execPath
+    if (process.platform === 'win32') {
+      // Check if node is available on PATH
+      try {
+        const which = require('child_process').execSync('where node 2>nul', { encoding: 'utf8' }).trim()
+        if (which) {
+          nodePath = which.split('\n')[0].trim()
+          dbg('Found system node: ' + nodePath)
+        }
+      } catch {
+        dbg('System node not found, using process.execPath')
+      }
+    }
+
+    nextProcess = spawn(nodePath, [serverFile], {
       cwd: standaloneDir,
       env: serverEnv,
       stdio: ['pipe', 'pipe', 'pipe'],
@@ -243,15 +260,17 @@ function startNextServer() {
       reject(err)
     })
 
+    let serverExited = false
     nextProcess.on('exit', (code, signal) => {
+      serverExited = true
       dbg(`Server exited: code=${code} signal=${signal}`)
       if (code !== 0 && code !== null) {
         reject(new Error('Server crashed with code ' + code + '\n\nOutput:\n' + serverOutput.slice(-10).join('\n')))
       }
     })
 
-    // Wait for server (20 seconds)
-    checkServerReady(40, 500).then(ready => {
+    // Wait for server (30 seconds — first run can be slow on Windows)
+    checkServerReady(60, 500).then(ready => {
       if (ready) {
         dbg('Server health check passed!')
         // Now test the actual page
@@ -271,8 +290,14 @@ function startNextServer() {
           resolve() // server is up, page might need different handling
         })
       } else {
-        dbg('Server NOT ready after 20s')
-        reject(new Error('Server did not respond after 20s\n\nOutput:\n' + serverOutput.slice(-15).join('\n')))
+        dbg('Server NOT ready after 30s (exited=' + serverExited + ')')
+        if (serverExited) {
+          reject(new Error('Server crashed during startup\n\nOutput:\n' + serverOutput.slice(-15).join('\n')))
+        } else {
+          // Server process is alive but not responding — kill it and report
+          nextProcess.kill()
+          reject(new Error('Server did not respond after 30s (process still running)\n\nOutput:\n' + serverOutput.slice(-15).join('\n')))
+        }
       }
     })
   })
@@ -293,6 +318,14 @@ async function loadApp() {
       dbg('Loading app URL...')
       // Try loading the page
       await mainWindow.loadURL(`http://localhost:${PORT}/en/login`)
+      
+      // Watch for server crashes after initial load
+      if (nextProcess) {
+        nextProcess.on('exit', (code, signal) => {
+          dbg(`Server died after app load: code=${code} signal=${signal}`)
+          loadStatusPage(`Server crashed (code ${code}). Restart the app.`, true)
+        })
+      }
       
       // After a short delay, check if the page rendered anything
       setTimeout(async () => {

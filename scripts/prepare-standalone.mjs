@@ -57,4 +57,19 @@ if (existsSync(serverJs)) {
   console.log('✅ Fixed DATABASE_URL in server.js to use __dirname-relative path')
 }
 
+// Verify critical files exist
+const criticalFiles = [
+  join(standaloneDir, 'server.js'),
+  join(standaloneDir, '.next', 'static'),
+  join(standaloneDir, 'dev.db'),
+]
+let ok = true
+for (const f of criticalFiles) {
+  if (!existsSync(f)) {
+    console.error(`❌ CRITICAL: ${f} not found after prepare!`)
+    ok = false
+  }
+}
+if (!ok) process.exit(1)
+
 console.log('🎉 Standalone build ready for Electron packaging')
