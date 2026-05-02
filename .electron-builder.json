@@ -21,6 +21,8 @@
   ],
   "asarUnpack": [
     ".next/standalone/**/*",
+    ".next/static/**/*",
+    "public/**/*",
     "node_modules/better-sqlite3/**/*",
     "node_modules/@prisma/**/*",
     "node_modules/.prisma/**/*",
