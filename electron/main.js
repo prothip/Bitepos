@@ -165,22 +165,21 @@ function findStandaloneDir() {
   // List candidate paths and check each one
   const candidates = []
 
+  // PREFERRED: extraResources puts standalone at resources/standalone/
+  // This is the real filesystem — no ASAR issues for the Node.js server
+  const resDir = process.resourcesPath
+  candidates.push(path.join(resDir, 'standalone'))
+
   if (isAsar) {
-    // When asarUnpack is used, Electron creates app.asar.unpacked alongside app.asar
-    // The .asar.unpacked directory mirrors the structure for files that were unpacked
+    // Fallback: asarUnpack locations
     const unpackedBase = appPath.replace(/\.asar.*/, '.asar.unpacked')
     candidates.push(path.join(unpackedBase, '.next', 'standalone'))
-
-    // Also try via resourcesPath
-    const resDir = process.resourcesPath
     candidates.push(path.join(resDir, 'app.asar.unpacked', '.next', 'standalone'))
 
     // Try relative to exe (Windows NSIS installs to Program Files)
     const exeDir = path.dirname(process.execPath)
+    candidates.push(path.join(exeDir, 'resources', 'standalone'))
     candidates.push(path.join(exeDir, 'resources', 'app.asar.unpacked', '.next', 'standalone'))
-
-    // Some electron-builder versions use different structure
-    candidates.push(path.join(resDir, 'app', '.next', 'standalone'))
   } else {
     candidates.push(path.join(appPath, '.next', 'standalone'))
   }
@@ -194,29 +193,8 @@ function findStandaloneDir() {
   // If none found, search the resources directory tree
   dbg('No candidate found, searching resources...')
   try {
-    const resDir = process.resourcesPath
     if (fs.existsSync(resDir)) {
       dbg('resourcesPath contents: ' + fs.readdirSync(resDir).join(', '))
-      const unpacked = path.join(resDir, 'app.asar.unpacked')
-      if (fs.existsSync(unpacked)) {
-        dbg('app.asar.unpacked contents: ' + fs.readdirSync(unpacked).join(', '))
-        const standaloneCheck = path.join(unpacked, '.next', 'standalone')
-        if (fs.existsSync(standaloneCheck)) return standaloneCheck
-        // Maybe standalone is deeper
-        try {
-          const nextCheck = path.join(unpacked, '.next')
-          if (fs.existsSync(nextCheck)) {
-            dbg('.next in unpacked contents: ' + fs.readdirSync(nextCheck).join(', '))
-          }
-        } catch {}
-      }
-      // Check plain app directory (no asar)
-      const appDir = path.join(resDir, 'app')
-      if (fs.existsSync(appDir)) {
-        dbg('app dir contents: ' + fs.readdirSync(appDir).join(', '))
-        const standaloneCheck = path.join(appDir, '.next', 'standalone')
-        if (fs.existsSync(standaloneCheck)) return standaloneCheck
-      }
     }
   } catch (e) {
     dbg('Error searching resources: ' + e.message)

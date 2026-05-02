@@ -9,26 +9,42 @@
   "files": [
     "package.json",
     "electron/**/*",
-    ".next/standalone/**/*",
-    ".next/static/**/*",
-    "public/**/*",
-    "prisma/**/*",
-    "dev.db",
     "node_modules/**/*",
     "!node_modules/electron/**",
     "!node_modules/electron-builder/**",
     "!node_modules/@electric-sql/**"
   ],
   "asarUnpack": [
-    ".next/standalone/**/*",
-    ".next/static/**/*",
-    "public/**/*",
     "node_modules/better-sqlite3/**/*",
     "node_modules/@prisma/**/*",
     "node_modules/.prisma/**/*",
     "node_modules/@libsql/**/*"
   ],
   "extraResources": [
+    {
+      "from": ".next/standalone",
+      "to": "standalone",
+      "filter": ["**/*"]
+    },
+    {
+      "from": ".next/static",
+      "to": "standalone/.next/static",
+      "filter": ["**/*"]
+    },
+    {
+      "from": "public",
+      "to": "standalone/public",
+      "filter": ["**/*", "!icon.icns", "!icon.ico"]
+    },
+    {
+      "from": "prisma",
+      "to": "standalone/prisma",
+      "filter": ["**/*"]
+    },
+    {
+      "from": "dev.db",
+      "to": "standalone/dev.db"
+    },
     {
       "from": "public/fonts/",
       "to": "fonts/"
