@@ -244,11 +244,70 @@ function startNextServer() {
     dbg('serverFile exists: ' + fs.existsSync(serverFile))
     dbg('dbPath exists: ' + fs.existsSync(dbPath))
 
-    // Verify .next/static exists (blank page cause)
+    // Ensure .next/static exists in standalone dir (blank page if missing)
+    // The standalone Node.js server cannot read from ASAR, so static must be on real FS
     const staticDir = path.join(standaloneDir, '.next', 'static')
-    dbg('.next/static exists: ' + fs.existsSync(staticDir))
-    if (fs.existsSync(staticDir)) {
+    const staticExists = fs.existsSync(staticDir)
+    dbg('.next/static exists: ' + staticExists)
+    if (staticExists) {
       try { dbg('.next/static contents: ' + fs.readdirSync(staticDir).join(', ')) } catch {}
+    } else {
+      // Try to copy .next/static from project root (asarUnpack may have placed it elsewhere)
+      const appPath = app.getAppPath()
+      const isAsar = appPath.includes('.asar')
+      const possibleStaticSources = []
+
+      if (isAsar) {
+        const unpackedBase = appPath.replace(/\.asar.*/, '.asar.unpacked')
+        possibleStaticSources.push(path.join(unpackedBase, '.next', 'static'))
+        possibleStaticSources.push(path.join(process.resourcesPath, 'app.asar.unpacked', '.next', 'static'))
+      }
+      possibleStaticSources.push(path.join(appPath, '.next', 'static'))
+      possibleStaticSources.push(path.join(path.dirname(process.execPath), 'resources', 'app.asar.unpacked', '.next', 'static'))
+
+      let copied = false
+      for (const src of possibleStaticSources) {
+        dbg('Trying static source: ' + src + ' -> ' + fs.existsSync(src))
+        if (fs.existsSync(src)) {
+          try {
+            const targetStatic = path.join(standaloneDir, '.next')
+            if (!fs.existsSync(targetStatic)) fs.mkdirSync(targetStatic, { recursive: true })
+            fs.cpSync(src, staticDir, { recursive: true })
+            dbg('✅ Copied .next/static from ' + src + ' to ' + staticDir)
+            copied = true
+            break
+          } catch (e) {
+            dbg('Failed to copy static from ' + src + ': ' + e.message)
+          }
+        }
+      }
+
+      if (!copied) {
+        dbg('⚠️ WARNING: .next/static not found anywhere! UI will likely be blank.')
+        dbg('Checked: ' + possibleStaticSources.join(', '))
+      }
+    }
+
+    // Also ensure /public exists in standalone dir (favicon, icons, etc.)
+    const publicDir = path.join(standaloneDir, 'public')
+    if (!fs.existsSync(publicDir)) {
+      const appPath2 = app.getAppPath()
+      const possiblePublicSources = []
+      if (appPath2.includes('.asar')) {
+        possiblePublicSources.push(path.join(appPath2.replace(/\.asar.*/, '.asar.unpacked'), 'public'))
+        possiblePublicSources.push(path.join(process.resourcesPath, 'app.asar.unpacked', 'public'))
+      }
+      possiblePublicSources.push(path.join(appPath2, 'public'))
+
+      for (const src of possiblePublicSources) {
+        if (fs.existsSync(src)) {
+          try {
+            fs.cpSync(src, publicDir, { recursive: true })
+            dbg('✅ Copied public from ' + src)
+            break
+          } catch (e) { dbg('Failed to copy public: ' + e.message) }
+        }
+      }
     }
 
     // List standalone dir contents

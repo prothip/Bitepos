@@ -1,4 +1,6 @@
 import { NextResponse } from 'next/server'
+
+export const dynamic = 'force-dynamic'
 import { prisma } from '@/lib/prisma'
 import { getFeaturesForBusiness, DEFAULT_FEATURES, type BusinessType, type FeatureFlags } from '@/lib/business-types'
 

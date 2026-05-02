@@ -60,7 +60,11 @@
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true
-    }
+    },
+    "asarUnpack": [
+      ".next/standalone/**/*",
+      ".next/static/**/*"
+    ]
   },
   "dependencies": {
     "@libsql/client": "^0.17.2",
